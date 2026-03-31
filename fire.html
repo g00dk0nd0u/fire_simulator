@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FIRE Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --ink:   #0d0d0b;
+  --ink2:  #1a1a16;
+  --ink3:  #3a3a30;
+  --dust:  #8a8a7a;
+  --mist:  #b8b8a8;
+  --paper: #e8e8d8;
+  --white: #fdfcf6;
+  --gold:  #c8962a;
+  --gold2: #e4b040;
+  --teal:  #28a888;
+  --rose:  #e07070;
+  --opt:   #5a9ade;
+  --nrm:   #9080d8;
+  --con:   #d09040;
+  --font-ui: 'IBM Plex Sans JP', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--font-ui);
+  font-weight:400;
+  line-height:1.72;
+  min-height:100vh;
+  overflow-x:hidden;
+  letter-spacing:.01em;
+}
+.hero{
+  position:relative;z-index:1;
+  padding:52px 24px 24px;
+  max-width:980px;margin:0 auto;
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+h1{
+  font-family:var(--font-display);
+  font-size:clamp(2rem,5vw,3.15rem);
+  font-weight:600;
+  line-height:1;
+  letter-spacing:.08em;
+  color:var(--white);
+  white-space:nowrap;
+}
+.layout{
+  position:relative;z-index:1;
+  max-width:980px;margin:0 auto;
+  padding:0 24px 72px;
+}
+.sec{
+  font-family:var(--font-display);
+  font-size:.68rem;letter-spacing:.16em;color:var(--dust);
+  font-weight:500;
+  text-transform:uppercase;
+  margin:44px 0 14px;
+  display:flex;align-items:center;gap:10px;
+}
+.sec::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.07);}
+.input-panel{
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:26px 22px;
+}
+.form-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:18px 24px;
+}
+@media(max-width:900px){.form-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:640px){.form-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:400px){.form-grid{grid-template-columns:1fr;}}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fg label{
+  font-family:var(--font-display);
+  font-size:.68rem;
+  letter-spacing:.06em;
+  color:var(--mist);
+  text-transform:uppercase;
+  font-weight:500;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  line-height:1.35;
+}
+.label-en{
+  display:block;
+  white-space:nowrap;
+}
+.label-ja{
+  display:block;
+  font-family:var(--font-ui);
+  font-size:.75rem;
+  font-weight:400;
+  letter-spacing:0;
+  text-transform:none;
+  color:var(--dust);
+}
+.field-note{
+  font-size:.68rem;
+  line-height:1.7;
+  color:var(--dust);
+}
+.field-note a{
+  color:var(--gold2);
+  text-decoration:none;
+  border-bottom:1px solid rgba(228,176,64,.32);
+}
+.field-note a:hover{
+  color:var(--white);
+  border-bottom-color:rgba(253,252,246,.6);
+}
+.fg-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.slider-value{
+  font-family:var(--font-display);
+  font-size:.84rem;
+  font-weight:500;
+  color:var(--white);
+  letter-spacing:.03em;
+  white-space:nowrap;
+}
+.fg input[type=range]{
+  width:90%;
+  height:6px;
+  appearance:none;
+  background:linear-gradient(90deg,rgba(200,150,42,.72),rgba(255,255,255,.14));
+  border-radius:999px;
+  outline:none;
+}
+.fg input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--gold2);
+  border:2px solid var(--ink);
+  box-shadow:0 0 0 3px rgba(200,150,42,.16);
+  cursor:pointer;
+}
+.fg input[type=range]::-moz-range-thumb{
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--gold2);
+  border:2px solid var(--ink);
+  box-shadow:0 0 0 3px rgba(200,150,42,.16);
+  cursor:pointer;
+}
+.fg input[type=range]::-moz-range-track{
+  height:6px;
+  background:linear-gradient(90deg,rgba(200,150,42,.72),rgba(255,255,255,.14));
+  border:none;
+  border-radius:999px;
+}
+.fg .unit{
+  font-family:var(--font-display);
+  font-size:.6rem;
+  font-weight:500;
+  color:var(--ink3);
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+#error-msg{
+  display:none;
+  background:rgba(200,64,64,.12);
+  border:1px solid rgba(200,64,64,.3);
+  border-radius:7px;color:#e09090;
+  font-size:.76rem;margin-top:12px;
+  padding:11px 15px;white-space:pre-line;line-height:1.75;
+}
+.info-msg{
+  display:none;
+  background:rgba(200,150,42,.12);
+  border:1px solid rgba(200,150,42,.22);
+  border-radius:7px;color:var(--gold2);
+  font-size:.76rem;margin-top:12px;
+  padding:11px 15px;white-space:pre-line;line-height:1.75;
+}
+.cards-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px;
+}
+@media(max-width:760px){.cards-grid{grid-template-columns:1fr;}}
+.rcard{
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:20px 17px;
+  display:flex;flex-direction:column;gap:13px;
+  position:relative;overflow:hidden;
+}
+.rcard::before{
+  content:'';position:absolute;
+  top:0;left:0;right:0;height:2px;
+}
+.rcard.opt::before{background:linear-gradient(90deg,#3a7ac0,#70b8f0);}
+.rcard.nrm::before{background:linear-gradient(90deg,#7060c0,#a898f0);}
+.rcard.con::before{background:linear-gradient(90deg,#a07020,#e0b050);}
+.rcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.rcard-name{
+  font-family:var(--font-display);
+  font-size:1.06rem;
+  font-weight:600;
+  color:var(--white);
+  line-height:1.1;
+  letter-spacing:.02em;
+}
+.rcard-rate{
+  font-family:var(--font-display);
+  font-size:.62rem;
+  font-weight:500;
+  color:var(--dust);
+  background:rgba(255,255,255,.05);
+  padding:3px 8px;border-radius:4px;margin-top:3px;
+}
+.nb{display:flex;flex-direction:column;gap:2px;}
+.nb-lbl{
+  font-family:var(--font-display);
+  font-size:.6rem;
+  letter-spacing:.08em;
+  color:var(--dust);
+  text-transform:uppercase;
+  font-weight:500;
+}
+.nb-val{
+  font-family:var(--font-display);
+  font-size:1.28rem;
+  font-weight:600;
+  line-height:1.08;
+  color:var(--white);
+  letter-spacing:-.01em;
+  word-break:break-word;
+}
+.nb-val.gold{color:var(--gold2);}
+.nb-sub{
+  font-family:var(--font-display);
+  font-size:.6rem;
+  font-weight:500;
+  color:var(--ink3);
+  margin-top:2px;
+  letter-spacing:.04em;
+}
+.csep{height:1px;background:rgba(255,255,255,.055);}
+.chart-card{
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:12px;padding:22px 18px 16px;
+}
+.chart-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.chart-title{
+  font-family:var(--font-display);
+  font-size:1rem;
+  font-weight:600;
+  letter-spacing:.03em;
+  color:var(--white);
+}
+.chart-note{
+  font-family:var(--font-display);
+  font-size:.62rem;
+  font-weight:500;
+  color:var(--dust);
+  letter-spacing:.06em;
+}
+.chart-fallback{
+  display:none;
+  margin-top:10px;
+  font-size:.75rem;
+  color:var(--dust);
+}
+#myChart{width:100%!important;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+.fu{animation:fadeUp .4s ease forwards;}
+.fu1{animation:fadeUp .4s .07s ease both;}
+.fu2{animation:fadeUp .4s .14s ease both;}
+.fu3{animation:fadeUp .4s .21s ease both;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>FIRE CALCULATOR</h1>
+</header>
+
+<div class="layout">
+
+  <div class="chart-card fu3">
+    <div class="chart-head">
+      <span class="chart-title">Asset Projection 資産推移</span>
+      <span class="chart-note" id="chart-note">一致度が最も高いFIRE時点を起点に表示</span>
+    </div>
+    <canvas id="myChart"></canvas>
+    <div id="chart-fallback" class="chart-fallback">グラフの描画に失敗しました。計算結果は下のカードで確認できます。</div>
+  </div>
+
+  <p class="sec">Parameters 入力</p>
+  <div class="input-panel">
+    <div class="form-grid">
+      <div class="fg">
+        <div class="fg-head">
+          <label for="currentAge"><span class="label-en">Current Age</span><span class="label-ja">現在年齢</span></label>
+          <span class="slider-value" id="currentAgeDisplay"></span>
+        </div>
+        <input type="range" id="currentAge" min="0" max="99" step="1">
+        <span class="unit"><span>0-99</span><span>歳</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="lifeAge"><span class="label-en">Life Expectancy</span><span class="label-ja">想定寿命</span></label>
+          <span class="slider-value" id="lifeAgeDisplay"></span>
+        </div>
+        <input type="range" id="lifeAge" min="1" max="120" step="1">
+        <span class="unit"><span>1-120</span><span>歳</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="monthlyExpense"><span class="label-en">Monthly Spending</span><span class="label-ja">月間生活費</span></label>
+          <span class="slider-value" id="monthlyExpenseDisplay"></span>
+        </div>
+        <input type="range" id="monthlyExpense" min="0" max="1000000" step="10000">
+        <span class="unit"><span>0-100万円</span><span>円 / 月</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="sp500Asset"><span class="label-en">Current Assets</span><span class="label-ja">現在のSP500資産</span></label>
+          <span class="slider-value" id="sp500AssetDisplay"></span>
+        </div>
+        <input type="range" id="sp500Asset" min="0" max="100000000" step="100000">
+        <span class="unit"><span>0-1億円</span><span>円</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="annualSp500Contribution"><span class="label-en">Annual Investment</span><span class="label-ja">年間平均SP500投資額</span></label>
+          <span class="slider-value" id="annualSp500ContributionDisplay"></span>
+        </div>
+        <input type="range" id="annualSp500Contribution" min="0" max="5000000" step="10000">
+        <span class="unit"><span>0-500万円</span><span>円 / 年</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="annualPension"><span class="label-en">Estimated Pension</span><span class="label-ja">受給見込み年金額</span></label>
+          <span class="slider-value" id="annualPensionDisplay"></span>
+        </div>
+        <input type="range" id="annualPension" min="0" max="4000000" step="10000">
+        <span class="unit"><span>0-400万円</span><span>円 / 年</span></span>
+        <div class="field-note">
+          <a href="https://www.nenkin.go.jp/n_net2/index.html" target="_blank" rel="noopener noreferrer">日本年金機構で見込み額を確認</a>
+        </div>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="pensionStartAge"><span class="label-en">Pension Start Age</span><span class="label-ja">年金受給開始年齢</span></label>
+          <span class="slider-value" id="pensionStartAgeDisplay"></span>
+        </div>
+        <input type="range" id="pensionStartAge" min="60" max="75" step="1">
+        <span class="unit"><span>60-75</span><span>歳</span></span>
+      </div>
+
+      <div class="fg">
+        <div class="fg-head">
+          <label for="inflationRate"><span class="label-en">Inflation Rate</span><span class="label-ja">インフレ率</span></label>
+          <span class="slider-value" id="inflationRateDisplay"></span>
+        </div>
+        <input type="range" id="inflationRate" min="0" max="4.5" step="0.05">
+        <span class="unit"><span>0-4.5</span><span>%</span></span>
+      </div>
+    </div>
+
+    <div id="error-msg"></div>
+    <div id="info-msg" class="info-msg"></div>
+  </div>
+
+  <div id="result-section">
+    <p class="sec fu1">Scenarios シナリオ</p>
+    <div class="cards-grid" id="cards-grid"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const STORAGE_KEY = 'fire_simulator_v5';
+const PENSION_BASE_AGE = 65;
+const NATIONAL_PENSION_PREMIUM_END_AGE = 60;
+const NATIONAL_PENSION_MONTHLY_PREMIUM = 17920;
+const PENSION_EARLY_ADJUST_PER_MONTH = 0.004;
+const PENSION_DEFER_ADJUST_PER_MONTH = 0.007;
+
+const RATES = {
+  optimistic: 0.115,
+  normal: 0.09,
+  conservative: 0.04
+};
+
+const LABELS = {
+  optimistic: 'Optimistic 楽観',
+  normal: 'Base 標準',
+  conservative: 'Conservative 保守'
+};
+
+const COLORS = {
+  optimistic: '#5a9ade',
+  normal: '#9080d8',
+  conservative: '#d09040'
+};
+
+const CLS = {
+  optimistic: 'opt',
+  normal: 'nrm',
+  conservative: 'con'
+};
+
+const NUMBER_IDS = [
+  'currentAge',
+  'lifeAge',
+  'monthlyExpense',
+  'sp500Asset',
+  'annualSp500Contribution',
+  'annualPension',
+  'pensionStartAge',
+  'inflationRate'
+];
+
+let chartInst = null;
+
+function getDefaultValues() {
+  return {
+    currentAge: 45,
+    lifeAge: 100,
+    monthlyExpense: 280000,
+    sp500Asset: 18000000,
+    annualSp500Contribution: 1200000,
+    annualPension: 1100000,
+    pensionStartAge: 75,
+    inflationRate: 1.25
+  };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return getDefaultValues();
+    const parsed = JSON.parse(raw);
+    return Object.assign({}, getDefaultValues(), parsed);
+  } catch (error) {
+    return getDefaultValues();
+  }
+}
+
+function saveState(values) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
+  } catch (error) {
+    // ignore
+  }
+}
+
+function getFormValues() {
+  const values = {};
+  NUMBER_IDS.forEach((id) => {
+    const el = document.getElementById(id);
+    values[id] = parseFloat(el.value);
+    if (Number.isNaN(values[id])) values[id] = 0;
+  });
+  return values;
+}
+
+function setFormValues(values) {
+  NUMBER_IDS.forEach((id) => {
+    document.getElementById(id).value = values[id];
+  });
+  updateSliderDisplays(values);
+}
+
+function formatSliderValue(id, value) {
+  if (['currentAge', 'lifeAge', 'pensionStartAge'].includes(id)) {
+    return `${value} 歳`;
+  }
+  if (id === 'inflationRate') {
+    return formatPercentCompact(value);
+  }
+  if (id === 'monthlyExpense') {
+    return formatOkuMan(value).replace('円', '') + ' / 月';
+  }
+  if (['annualSp500Contribution', 'annualPension'].includes(id)) {
+    return formatOkuMan(value).replace('円', '') + ' / 年';
+  }
+  return formatOkuMan(value);
+}
+
+function updateSliderDisplays(values) {
+  NUMBER_IDS.forEach((id) => {
+    const display = document.getElementById(`${id}Display`);
+    if (display) {
+      display.textContent = formatSliderValue(id, values[id]);
+    }
+  });
+}
+
+function validateInputs(values) {
+  const errors = [];
+
+  if (values.currentAge < 0) {
+    errors.push('現在年齢は 0 以上を入力してください。');
+  }
+  if (values.lifeAge <= values.currentAge) {
+    errors.push('想定寿命は現在年齢より大きい値にしてください。');
+  }
+  if (values.monthlyExpense < 0) {
+    errors.push('月間生活費は 0 以上を入力してください。');
+  }
+  if (values.sp500Asset < 0) {
+    errors.push('SP500資産は 0 以上を入力してください。');
+  }
+  if (values.annualSp500Contribution < 0) {
+    errors.push('年間平均SP500投資額は 0 以上を入力してください。');
+  }
+  if (values.annualPension < 0) {
+    errors.push('受給見込み年金額は 0 以上を入力してください。');
+  }
+  if (values.pensionStartAge < 60 || values.pensionStartAge > 75) {
+    errors.push('年金受給開始年齢は 60〜75 の範囲で入力してください。');
+  }
+  if (values.inflationRate < 0 || values.inflationRate > 4.5) {
+    errors.push('インフレ率は 0〜4.5 の範囲で入力してください。');
+  }
+
+  return errors;
+}
+
+function showError(messages) {
+  const el = document.getElementById('error-msg');
+  el.textContent = messages.join('\n');
+  el.style.display = 'block';
+}
+
+function hideError() {
+  const el = document.getElementById('error-msg');
+  el.textContent = '';
+  el.style.display = 'none';
+}
+
+function showInfo(message) {
+  const el = document.getElementById('info-msg');
+  el.textContent = message;
+  el.style.display = 'block';
+}
+
+function hideInfo() {
+  const el = document.getElementById('info-msg');
+  el.textContent = '';
+  el.style.display = 'none';
+}
+
+function getAdjustedAnnualPension(values) {
+  const diffYears = values.pensionStartAge - PENSION_BASE_AGE;
+  const diffMonths = Math.abs(diffYears) * 12;
+  const adjustRate = diffYears >= 0
+    ? 1 + diffMonths * PENSION_DEFER_ADJUST_PER_MONTH
+    : 1 - diffMonths * PENSION_EARLY_ADJUST_PER_MONTH;
+  return {
+    pensionAdjustRate: Math.max(0, adjustRate),
+    adjustedAnnualPension: Math.max(0, values.annualPension * adjustRate)
+  };
+}
+
+function formatPensionAdjustmentNote(pensionAdjustRate) {
+  const delta = (pensionAdjustRate - 1) * 100;
+  if (delta > 0) return `+${delta.toFixed(1)}% 増額後`;
+  if (delta < 0) return `${delta.toFixed(1)}% 減額後`;
+  return '65歳基準 / Base 65';
+}
+
+function simulate(startAge, totalInitialAssetAtRetirement, rate, values) {
+  let balance = totalInitialAssetAtRetirement;
+  const monthlyRate = getScenarioMonthlyRate(rate, values);
+  const { adjustedAnnualPension } = getAdjustedAnnualPension(values);
+  const monthlyPension = adjustedAnnualPension / 12;
+  const pensionStartMonths = toMonthAge(values.pensionStartAge);
+  const lifeAgeMonths = toMonthAge(values.lifeAge);
+  const pensionPremiumEndMonths = toMonthAge(NATIONAL_PENSION_PREMIUM_END_AGE);
+
+  for (let ageMonth = startAge; ageMonth < lifeAgeMonths; ageMonth++) {
+    const income = ageMonth >= pensionStartMonths ? monthlyPension : 0;
+    const nationalPensionPremium = ageMonth < pensionPremiumEndMonths ? NATIONAL_PENSION_MONTHLY_PREMIUM : 0;
+    const netExpense = values.monthlyExpense + nationalPensionPremium - income;
+    balance = balance * (1 + monthlyRate) - netExpense;
+  }
+
+  return balance;
+}
+
+function findRequiredTotalAsset(startAge, rate, values) {
+  let low = 0;
+  let high = 10000000;
+
+  while (simulate(startAge, high, rate, values) < 0) {
+    high *= 2;
+    if (high > 1e12) break;
+  }
+
+  for (let i = 0; i < 60; i++) {
+    const mid = (low + high) / 2;
+    const result = simulate(startAge, mid, rate, values);
+
+    if (result >= 0) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  const lowResult = Math.abs(simulate(startAge, low, rate, values));
+  const highResult = Math.abs(simulate(startAge, high, rate, values));
+  return lowResult < highResult ? low : high;
+}
+
+function generateSeries(startAge, totalInitialAssetAtRetirement, rate, values) {
+  const monthlyRate = getScenarioMonthlyRate(rate, values);
+  const { adjustedAnnualPension } = getAdjustedAnnualPension(values);
+  const monthlyPension = adjustedAnnualPension / 12;
+  const pensionStartMonths = toMonthAge(values.pensionStartAge);
+  const lifeAgeMonths = toMonthAge(values.lifeAge);
+  const pensionPremiumEndMonths = toMonthAge(NATIONAL_PENSION_PREMIUM_END_AGE);
+  const ages = [startAge / 12];
+  const bals = [totalInitialAssetAtRetirement];
+
+  let balance = totalInitialAssetAtRetirement;
+
+  for (let ageMonth = startAge; ageMonth < lifeAgeMonths; ageMonth++) {
+    const income = ageMonth >= pensionStartMonths ? monthlyPension : 0;
+    const nationalPensionPremium = ageMonth < pensionPremiumEndMonths ? NATIONAL_PENSION_MONTHLY_PREMIUM : 0;
+    const netExpense = values.monthlyExpense + nationalPensionPremium - income;
+    balance = balance * (1 + monthlyRate) - netExpense;
+    ages.push((ageMonth + 1) / 12);
+    bals.push(balance);
+  }
+
+  return { ages, bals };
+}
+
+function projectAssetsToAge(targetAge, rate, values) {
+  const monthsToRetire = targetAge - toMonthAge(values.currentAge);
+  const monthlyRate = getScenarioMonthlyRate(rate, values);
+  const projectedSp500 = values.sp500Asset * Math.pow(1 + monthlyRate, monthsToRetire);
+  let projectedContributions = 0;
+
+  if (monthsToRetire > 0 && values.annualSp500Contribution > 0) {
+    const monthlyContribution = values.annualSp500Contribution / 12;
+    if (monthlyRate === 0) {
+      projectedContributions = monthlyContribution * monthsToRetire;
+    } else {
+      projectedContributions =
+        monthlyContribution * ((Math.pow(1 + monthlyRate, monthsToRetire) - 1) / monthlyRate);
+    }
+  }
+
+  return projectedSp500 + projectedContributions;
+}
+
+function formatYen(value) {
+  return Math.round(value).toLocaleString('ja-JP') + ' 円';
+}
+
+function formatManYen(value) {
+  return Math.round(value / 10000).toLocaleString('ja-JP') + '万円';
+}
+
+function formatOkuMan(value) {
+  const isNegative = value < 0;
+  const prefix = isNegative ? '▲' : '';
+  const man = Math.round(Math.abs(value) / 10000);
+
+  if (man >= 10000) {
+    const oku = Math.floor(man / 10000);
+    const rem = man % 10000;
+    return prefix + (rem === 0 ? `${oku}億円` : `${oku}億${rem.toLocaleString('ja-JP')}万円`);
+  }
+  return prefix + `${man.toLocaleString('ja-JP')}万円`;
+}
+
+function formatPercent(value) {
+  return value.toFixed(1) + '%';
+}
+
+function formatPercentCompact(value) {
+  return `${parseFloat(value.toFixed(2)).toString()}%`;
+}
+
+function toMonthAge(ageInYears) {
+  return Math.round(ageInYears * 12);
+}
+
+function formatAgeWithMonths(ageInMonths) {
+  const years = Math.floor(ageInMonths / 12);
+  const months = ageInMonths % 12;
+  return months === 0 ? `${years} 歳` : `${years} 歳 ${months} ヶ月`;
+}
+
+function formatDurationMonths(durationMonths) {
+  const years = Math.floor(durationMonths / 12);
+  const months = durationMonths % 12;
+
+  if (durationMonths <= 0) return '0ヶ月後に一致';
+  if (months === 0) return `${years}年後に一致`;
+  if (years === 0) return `${months}ヶ月後に一致`;
+  return `${years}年${months}ヶ月後に一致`;
+}
+
+function getMonthlyRate(rate) {
+  return Math.pow(1 + rate, 1 / 12) - 1;
+}
+
+function getRealAnnualRate(nominalRate, inflationRatePercent) {
+  const inflationRate = inflationRatePercent / 100;
+  return ((1 + nominalRate) / (1 + inflationRate)) - 1;
+}
+
+function getScenarioMonthlyRate(nominalRate, values) {
+  return getMonthlyRate(getRealAnnualRate(nominalRate, values.inflationRate));
+}
+
+function renderCards(results) {
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+
+  Object.entries(results).forEach(([key, r], index) => {
+    const achieved = r.isAchievable;
+    const anim = ['fu', 'fu1', 'fu2'][index] || 'fu';
+
+    const card = document.createElement('div');
+    card.className = `rcard ${CLS[key]} ${anim}`;
+    card.innerHTML = `
+      <div class="rcard-head">
+        <div>
+          <div class="rcard-name">${LABELS[key]}</div>
+          <div class="rcard-rate">年率 ${formatPercentCompact(RATES[key] * 100)}</div>
+        </div>
+      </div>
+
+      <div class="nb">
+        <div class="nb-lbl">FIRE Age FIRE年齢</div>
+        <div class="nb-val gold">${achieved ? formatAgeWithMonths(r.fireAgeMonths) : '未達'}</div>
+        <div class="nb-sub">${achieved ? formatDurationMonths(r.fireAgeMonths - r.currentAgeMonths) : '想定寿命まで条件未達'}</div>
+      </div>
+
+      <div class="csep"></div>
+
+      <div class="nb">
+        <div class="nb-lbl">Required Principal 必要元本</div>
+        <div class="nb-val">${formatOkuMan(r.requiredTotalAtRetirement)}</div>
+        <div class="nb-sub">${formatYen(r.requiredTotalAtRetirement)}</div>
+      </div>
+
+      <div class="nb">
+        <div class="nb-lbl">Pension Income 年金受給額</div>
+        <div class="nb-val">${formatOkuMan(r.adjustedAnnualPension)}</div>
+        <div class="nb-sub">${formatPensionAdjustmentNote(r.pensionAdjustRate)}</div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function destroyChart() {
+  if (chartInst) {
+    chartInst.destroy();
+    chartInst = null;
+  }
+}
+
+function renderChart(chartData) {
+  const fallback = document.getElementById('chart-fallback');
+  fallback.style.display = 'none';
+
+  if (Object.keys(chartData).length === 0) {
+    destroyChart();
+    fallback.textContent = '想定寿命までにFIRE成立シナリオがないため、グラフは表示されません。';
+    fallback.style.display = 'block';
+    return;
+  }
+
+  if (typeof Chart === 'undefined') {
+    fallback.textContent = 'Chart.js を読み込めなかったため、グラフは表示されません。計算結果は下のカードで確認できます。';
+    fallback.style.display = 'block';
+    return;
+  }
+
+  const canvas = document.getElementById('myChart');
+  const ctx = canvas.getContext('2d');
+
+  destroyChart();
+
+  const gridColor = 'rgba(255,255,255,.065)';
+  const textColor = '#686860';
+
+  chartInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: Object.entries(chartData).map(([key, series]) => ({
+        label: LABELS[key],
+        data: series.ages.map((age, i) => ({ x: age, y: series.bals[i] })),
+        borderColor: COLORS[key],
+        backgroundColor: COLORS[key] + '12',
+        borderWidth: 2.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.32,
+        fill: false
+      }))
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2.1,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'linear',
+          title: {
+            display: true,
+            text: '年齢（歳）',
+            color: textColor,
+            font: { size: 10, family: "'Space Grotesk'" }
+          },
+          ticks: {
+            color: textColor,
+            font: { size: 9, family: "'Space Grotesk'" },
+            stepSize: 5,
+            callback: (value) => Number.isInteger(value) ? `${value}` : value.toFixed(1)
+          },
+          grid: { color: gridColor }
+        },
+        y: {
+          title: {
+            display: true,
+            text: '万円',
+            color: textColor,
+            font: { size: 10, family: "'Space Grotesk'" }
+          },
+          ticks: {
+            color: textColor,
+            font: { size: 9, family: "'Space Grotesk'" },
+            callback: (value) => Math.round(value / 10000).toLocaleString('ja-JP')
+          },
+          grid: {
+            color: (context) => context.tick.value === 0 ? 'rgba(255,255,255,.18)' : gridColor
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          position: 'top',
+          align: 'end',
+          labels: {
+            color: '#7a7a70',
+            font: { size: 10, family: "'Space Grotesk'" },
+            padding: 14,
+            boxWidth: 18,
+            boxHeight: 2
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(8,8,6,.94)',
+          borderColor: 'rgba(255,255,255,.1)',
+          borderWidth: 1,
+          titleFont: { family: "'Space Grotesk'", size: 11 },
+          bodyFont: { family: "'Space Grotesk'", size: 10 },
+          titleColor: '#b8b8a8',
+          bodyColor: '#7a7a70',
+          padding: 10,
+          callbacks: {
+            title: (items) => formatAgeWithMonths(Math.round(items[0].parsed.x * 12)),
+            label: (item) => ` ${item.dataset.label}: ${formatOkuMan(item.parsed.y)}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function calculateScenario(rate, values) {
+  let selectedAgeMonths = null;
+  let requiredTotalAtRetirement = 0;
+  let projectedAssetsAtRetirement = 0;
+  let endingBalanceAtLifeAge = 0;
+  let bestAchievedGap = Infinity;
+  let bestCoverageRate = -Infinity;
+  let fallbackAgeMonths = toMonthAge(values.lifeAge) - 1;
+  const currentAgeMonths = toMonthAge(values.currentAge);
+  const lifeAgeMonths = toMonthAge(values.lifeAge);
+  const { adjustedAnnualPension, pensionAdjustRate } = getAdjustedAnnualPension(values);
+
+  for (let ageMonths = currentAgeMonths; ageMonths < lifeAgeMonths; ageMonths++) {
+    const required = findRequiredTotalAsset(ageMonths, rate, values);
+    const projected = projectAssetsToAge(ageMonths, rate, values);
+    const gap = projected - required;
+    const coverageRate = required > 0 ? (projected / required) * 100 : 0;
+
+    if (coverageRate > bestCoverageRate) {
+      bestCoverageRate = coverageRate;
+      fallbackAgeMonths = ageMonths;
+    }
+
+    if (gap >= 0 && gap < bestAchievedGap) {
+      bestAchievedGap = gap;
+      selectedAgeMonths = ageMonths;
+      requiredTotalAtRetirement = required;
+      projectedAssetsAtRetirement = projected;
+      endingBalanceAtLifeAge = simulate(ageMonths, requiredTotalAtRetirement, rate, values);
+    }
+  }
+
+  if (selectedAgeMonths === null) {
+    requiredTotalAtRetirement = findRequiredTotalAsset(fallbackAgeMonths, rate, values);
+    projectedAssetsAtRetirement = projectAssetsToAge(fallbackAgeMonths, rate, values);
+    endingBalanceAtLifeAge = simulate(fallbackAgeMonths, requiredTotalAtRetirement, rate, values);
+    const retirementSurplus = projectedAssetsAtRetirement - requiredTotalAtRetirement;
+    const coverageRate = requiredTotalAtRetirement > 0
+      ? (projectedAssetsAtRetirement / requiredTotalAtRetirement) * 100
+      : 0;
+
+    return {
+      currentAgeMonths,
+      fireAge: null,
+      fireAgeMonths: null,
+      isAchievable: false,
+      requiredTotalAtRetirement,
+      projectedAssetsAtRetirement,
+      adjustedAnnualPension,
+      pensionAdjustRate,
+      endingBalanceAtLifeAge,
+      retirementSurplus,
+      coverageRate
+    };
+  }
+
+  const retirementSurplus = projectedAssetsAtRetirement - requiredTotalAtRetirement;
+
+  return {
+    currentAgeMonths,
+    fireAge: selectedAgeMonths / 12,
+    fireAgeMonths: selectedAgeMonths,
+    isAchievable: true,
+    requiredTotalAtRetirement,
+    projectedAssetsAtRetirement,
+    adjustedAnnualPension,
+    pensionAdjustRate,
+    endingBalanceAtLifeAge,
+    retirementSurplus,
+    coverageRate: 100
+  };
+}
+
+function updateSimulation() {
+  hideError();
+  hideInfo();
+
+  const values = getFormValues();
+  updateSliderDisplays(values);
+  saveState(values);
+
+  const errors = validateInputs(values);
+
+  if (errors.length > 0) {
+    showError(errors);
+    return;
+  }
+
+  const results = {};
+  const chartData = {};
+
+  Object.entries(RATES).forEach(([key, rate]) => {
+    results[key] = calculateScenario(rate, values);
+    if (results[key].isAchievable) {
+      chartData[key] = generateSeries(results[key].fireAgeMonths, results[key].requiredTotalAtRetirement, rate, values);
+    }
+  });
+
+  renderCards(results);
+
+  try {
+    renderChart(chartData);
+  } catch (error) {
+    destroyChart();
+    const fallback = document.getElementById('chart-fallback');
+    fallback.textContent = 'グラフ描画中にエラーが発生しました。計算結果は下のカードで確認できます。';
+    fallback.style.display = 'block';
+    showInfo('計算は完了しましたが、グラフ描画だけ失敗しました。');
+    console.error(error);
+  }
+
+  const { adjustedAnnualPension, pensionAdjustRate } = getAdjustedAnnualPension(values);
+  document.getElementById('chart-note').textContent =
+    `${values.pensionStartAge}歳受給 · 年額 ${formatOkuMan(adjustedAnnualPension)} · 補正率 ${formatPercent(pensionAdjustRate * 100)} · インフレ率 ${formatPercentCompact(values.inflationRate)} · 60歳未満は国民年金月額 ${formatOkuMan(NATIONAL_PENSION_MONTHLY_PREMIUM)}`;
+}
+
+function bindEvents() {
+  NUMBER_IDS.forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => {
+      updateSimulation();
+    });
+  });
+}
+
+function init() {
+  setFormValues(loadState());
+  bindEvents();
+  updateSimulation();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

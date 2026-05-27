@@ -49,6 +49,7 @@ h1{font-size:clamp(1.7rem, 4vw, 2.6rem);font-weight:700;letter-spacing:.055em;ba
 .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 24px;}
 @media(max-width:900px){.form-grid{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:640px){.form-grid{grid-template-columns:repeat(2,1fr);}}
+@media (max-width: 640px) { .chart-card { padding: 22px 14px 20px; } #myChart { height: 420px !important; } }
 @media(max-width:400px){.form-grid{grid-template-columns:1fr;}}
 @media(max-width:480px){.hero{padding:36px 16px 18px;}.layout{padding:0 16px 48px;}.input-panel{padding:18px 14px;}.rcard{padding:16px 14px;}}
 .fg{display:flex;flex-direction:column;gap:5px;}.fg label{color:var(--color-text-secondary);font-size:.72rem;font-weight:700;display:flex;flex-direction:column;gap:3px;line-height:1.35;}
@@ -66,7 +67,7 @@ h1{font-size:clamp(1.7rem, 4vw, 2.6rem);font-weight:700;letter-spacing:.055em;ba
 .rcard{padding:20px 17px;display:flex;flex-direction:column;gap:13px;position:relative;overflow:hidden;isolation:isolate;} .rcard::before{content:'';position:absolute;inset:0;z-index:-1;} .rcard.opt::before{background:radial-gradient(circle at 16% 0%, rgba(90,173,143,.22), transparent 44%);} .rcard.nrm::before{background:radial-gradient(circle at 16% 0%, rgba(74,144,184,.22), transparent 44%);} .rcard.con::before{background:radial-gradient(circle at 16% 0%, rgba(196,126,106,.20), transparent 44%);} 
 .rcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;} .rcard-name{font-size:1.06rem;font-weight:600;color:var(--color-text-primary);line-height:1.1;letter-spacing:.02em;} .rcard-rate{font-size:.62rem;font-weight:600;color:var(--color-text-secondary);background:var(--color-surface-alt);padding:3px 8px;border-radius:999px;margin-top:3px;} 
 .nb{display:flex;flex-direction:column;gap:2px;} .nb-lbl{font-size:.6rem;letter-spacing:.08em;color:var(--color-text-muted);text-transform:uppercase;font-weight:600;} .nb-val{font-size:1.28rem;font-weight:700;line-height:1.08;color:var(--color-text-primary);letter-spacing:-.01em;word-break:break-word;} .nb-val.gold{color:var(--color-accent);} .nb-sub{font-size:.6rem;font-weight:600;color:var(--color-text-secondary);margin-top:2px;letter-spacing:.04em;} 
-.csep{height:1px;background:var(--color-border);} .chart-card{padding:22px 18px 16px;} .chart-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap;} .chart-title{font-size:1rem;font-weight:700;letter-spacing:.03em;color:var(--color-text-primary);} .chart-note{font-size:.62rem;font-weight:600;color:var(--color-text-secondary);letter-spacing:.03em;} .chart-fallback{display:none;margin-top:10px;font-size:.75rem;color:var(--color-text-secondary);} #myChart{width:100%!important;} @keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}} .fu{animation:fadeUp .4s ease forwards;} .fu1{animation:fadeUp .4s .07s ease both;} .fu2{animation:fadeUp .4s .14s ease both;} .fu3{animation:fadeUp .4s .21s ease both;}
+.csep{height:1px;background:var(--color-border);} .chart-card{padding:24px 20px 22px;} .chart-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap;} .chart-title{font-size:1rem;font-weight:700;letter-spacing:.03em;color:var(--color-text-primary);} .chart-note{font-size:.62rem;font-weight:600;color:var(--color-text-secondary);letter-spacing:.03em;} .chart-fallback{display:none;margin-top:10px;font-size:.75rem;color:var(--color-text-secondary);} #myChart{width:100%!important;height:360px!important;} @keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}} .fu{animation:fadeUp .4s ease forwards;} .fu1{animation:fadeUp .4s .07s ease both;} .fu2{animation:fadeUp .4s .14s ease both;} .fu3{animation:fadeUp .4s .21s ease both;}
 </style>
 </head>
 <body>
@@ -382,8 +383,10 @@ function formatPensionAdjustmentNote(pensionAdjustRate) {
   return '65歳基準 / Base 65';
 }
 
-function simulate(startAge, totalInitialAssetAtRetirement, rate, values) {
+function simulatePath(startAge, totalInitialAssetAtRetirement, rate, values) {
   let balance = totalInitialAssetAtRetirement;
+  let minBalance = balance;
+  let bankruptcyMonth = null;
   const monthlyRate = getScenarioMonthlyRate(rate, values);
   const { adjustedAnnualPension } = getAdjustedAnnualPension(values);
   const monthlyPension = adjustedAnnualPension / 12;
@@ -396,34 +399,49 @@ function simulate(startAge, totalInitialAssetAtRetirement, rate, values) {
     const nationalPensionPremium = ageMonth < pensionPremiumEndMonths ? NATIONAL_PENSION_MONTHLY_PREMIUM : 0;
     const netExpense = values.monthlyExpense + nationalPensionPremium - income;
     balance = balance * (1 + monthlyRate) - netExpense;
+    minBalance = Math.min(minBalance, balance);
+
+    if (balance <= 0 && ageMonth + 1 < lifeAgeMonths) {
+      bankruptcyMonth = ageMonth + 1;
+      break;
+    }
   }
 
-  return balance;
+  return {
+    endingBalance: balance,
+    minBalance,
+    bankruptcyMonth,
+    isSolvent: bankruptcyMonth === null && balance >= 0
+  };
+}
+
+function simulate(startAge, totalInitialAssetAtRetirement, rate, values) {
+  return simulatePath(startAge, totalInitialAssetAtRetirement, rate, values).endingBalance;
+}
+
+function isSolventAtAsset(startAge, asset, rate, values) {
+  return simulatePath(startAge, asset, rate, values).isSolvent;
 }
 
 function findRequiredTotalAsset(startAge, rate, values) {
   let low = 0;
   let high = 10000000;
 
-  while (simulate(startAge, high, rate, values) < 0) {
+  while (!isSolventAtAsset(startAge, high, rate, values)) {
     high *= 2;
     if (high > 1e12) break;
   }
 
   for (let i = 0; i < 60; i++) {
     const mid = (low + high) / 2;
-    const result = simulate(startAge, mid, rate, values);
-
-    if (result >= 0) {
+    if (isSolventAtAsset(startAge, mid, rate, values)) {
       high = mid;
     } else {
       low = mid;
     }
   }
 
-  const lowResult = Math.abs(simulate(startAge, low, rate, values));
-  const highResult = Math.abs(simulate(startAge, high, rate, values));
-  return lowResult < highResult ? low : high;
+  return high;
 }
 
 function generateSeries(startAge, totalInitialAssetAtRetirement, rate, values) {
@@ -602,8 +620,8 @@ function renderChart(chartData) {
 
   destroyChart();
 
-  const gridColor = 'rgba(74,130,170,.10)';
-  const textColor = '#6a849a';
+  const gridColor = 'rgba(74,130,170,.18)';
+  const textColor = '#4b6274';
 
   chartInst = new Chart(ctx, {
     type: 'line',
@@ -613,17 +631,16 @@ function renderChart(chartData) {
         data: series.ages.map((age, i) => ({ x: age, y: series.bals[i] })),
         borderColor: COLORS[key],
         backgroundColor: COLORS[key] + '12',
-        borderWidth: 2.5,
+        borderWidth: 4,
         pointRadius: 0,
-        pointHoverRadius: 4,
+        pointHoverRadius: 6,
         tension: 0.32,
         fill: false
       }))
     },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 2.1,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: {
@@ -632,11 +649,11 @@ function renderChart(chartData) {
             display: true,
             text: '年齢（歳）',
             color: textColor,
-            font: { size: 10, family: "'Inter'" }
+            font: { size: 13, weight: '600', family: "'Inter'" }
           },
           ticks: {
             color: textColor,
-            font: { size: 9, family: "'Inter'" },
+            font: { size: 12, weight: '600', family: "'Inter'" },
             stepSize: 5,
             callback: (value) => Number.isInteger(value) ? `${value}` : value.toFixed(1)
           },
@@ -647,11 +664,11 @@ function renderChart(chartData) {
             display: true,
             text: '万円',
             color: textColor,
-            font: { size: 10, family: "'Inter'" }
+            font: { size: 13, weight: '600', family: "'Inter'" }
           },
           ticks: {
             color: textColor,
-            font: { size: 9, family: "'Inter'" },
+            font: { size: 12, weight: '600', family: "'Inter'" },
             callback: (value) => Math.round(value / 10000).toLocaleString('ja-JP')
           },
           grid: {
@@ -662,13 +679,13 @@ function renderChart(chartData) {
       plugins: {
         legend: {
           position: 'top',
-          align: 'end',
+          align: window.innerWidth <= 640 ? 'center' : 'end',
           labels: {
-            color: '#6a849a',
-            font: { size: 10, family: "'Inter'" },
-            padding: 14,
-            boxWidth: 18,
-            boxHeight: 2
+            color: '#4b6274',
+            font: { size: 13, weight: '600', family: "'Inter'" },
+            padding: 16,
+            boxWidth: 28,
+            boxHeight: 4
           }
         },
         tooltip: {
@@ -713,12 +730,14 @@ function calculateScenario(rate, values) {
       fallbackAgeMonths = ageMonths;
     }
 
-    if (gap >= 0 && gap < bestAchievedGap) {
+    const path = simulatePath(ageMonths, projected, rate, values);
+
+    if (gap >= 0 && path.isSolvent && gap < bestAchievedGap) {
       bestAchievedGap = gap;
       selectedAgeMonths = ageMonths;
       requiredTotalAtRetirement = required;
       projectedAssetsAtRetirement = projected;
-      endingBalanceAtLifeAge = simulate(ageMonths, requiredTotalAtRetirement, rate, values);
+      endingBalanceAtLifeAge = path.endingBalance;
     }
   }
 

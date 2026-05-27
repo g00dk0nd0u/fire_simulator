@@ -11,13 +11,14 @@
 
 ## 使い方
 1. このリポジトリをクローン
-2. `fire.html` をブラウザで開く
+2. `fire.html` をブラウザで開く（GitHub Pages では `docs/index.html` が公開されます）
 3. スライダーを動かして結果を確認
 
 > ビルドやサーバー起動は不要です（単体HTMLで動作）。
 
 ## ファイル構成
 - `fire.html` : アプリ本体（UI / 計算ロジック / グラフ描画）
+- `docs/index.html` : GitHub Pages 公開用エントリ（`fire.html` と同内容）
 
 ## 補足
 - グラフ描画ライブラリとして CDN 経由で Chart.js を利用しております。

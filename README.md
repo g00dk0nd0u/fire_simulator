@@ -29,4 +29,4 @@
 
 ## データ・ライブラリ
 - グラフ描画: Chart.js（CDN）
-- S&P 500月次履歴: `diogosferreira/lfc-sp500-data` の `nomTRP` をコミットSHA固定で参照。Shillerの月次価格・配当系列を基礎に、近年はS&P 500 Total Return系列で延長されたデータです。
+- S&P 500月次履歴: `GaMa96/lfc-sp500-data` の `nomTRP` をコミット `ac66267d99aaa0f88c41f93acabc639a9a4dd908` に固定して参照。Shillerの月次価格・配当系列を基礎に、近年はS&P 500 Total Return系列で延長されたデータです。

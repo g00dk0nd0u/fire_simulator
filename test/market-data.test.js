@@ -69,12 +69,16 @@ assert.strictEqual(elements.baseMarketDisplay.textContent,`${Number((dataBase*10
 
 // Unavailable cards preserve H and explicitly label Conservative as insufficient history.
 vm.runInContext("ACTIVE_MARKET={id:'acwi',label:'MSCI ACWI'}",context);
-const unavailable=vm.runInContext(`makeUnavailableScenario(${JSON.stringify({ ...v,currentAge:45,lifeAge:100,baseMarket:'acwi'})})`,context);
+const unavailable=vm.runInContext(`makeUnavailableScenario(${JSON.stringify({ ...v,currentAge:45,lifeAge:100,baseMarket:'acwi'})},'history_missing')`,context);
 assert.strictEqual(unavailable.lookbackMonths,55*12);
 context.unavailable=unavailable;
 vm.runInContext("renderCards({recent:unavailable,conservative:unavailable})",context);
-assert(cards.children[0].innerHTML.includes('直近55年 · 履歴不足'));
-assert(cards.children[1].innerHTML.includes('MSCI ACWI · 履歴不足'));
+assert(cards.children[0].innerHTML.includes('直近55年 · 月次履歴未収録'));
+assert(cards.children[1].innerHTML.includes('MSCI ACWI · 月次履歴未収録'));
 assert(!cards.children[1].innerHTML.includes('Worst Path'));
+
+assert.strictEqual(vm.runInContext("historyStatusLabel('history_missing')",context),'月次履歴未収録');
+assert.strictEqual(vm.runInContext("historyStatusLabel('history_too_short')",context),'履歴期間不足');
+assert.strictEqual(vm.runInContext("historyStatusLabel('invalid_history')",context),'月次履歴エラー');
 
 console.log('market-data tests passed');

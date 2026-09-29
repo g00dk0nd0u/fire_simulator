@@ -26,3 +26,26 @@ assert.strictEqual(actual.worstStart,wanted.start);
 vm.runInContext("selectMarketHistory('acwi')",context);
 assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0,'no cross-index fallback');
 console.log('market-data tests passed');
+
+// S&P 500 preserves the legacy 1946-01 cut-off even when the raw series starts earlier.
+context.window.__lfcSpData={start:'1945-10',nomTRP:[90,91,92,93,94,95]};
+context.window.__marketData=Object.assign({},context.window.__marketData,{sp500:Object.assign({},context.window.__marketData.sp500,{monthlyLevels:null})});
+vm.runInContext("selectMarketHistory('sp500')",context);
+assert.strictEqual(vm.runInContext('HISTORY_META.start',context),'1946-01');
+assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),3);
+
+// A local monthly series is the single source for Base and Recent retirement rates.
+context.window.__marketData.test={id:'test',label:'Test',historyStart:'2020-01',nominalCagr:.99,monthlyLevels:levels};
+vm.runInContext("selectMarketHistory('test')",context);
+const dataBase=vm.runInContext("getBaseRate({baseMarket:'test'})",context);
+const fullCagr=Math.pow(106/100,12/4)-1;
+assert(Math.abs(dataBase-fullCagr)<1e-12,'Base is calculated from monthly levels');
+const recentScenario=vm.runInContext(`calculateRecentScenario(${JSON.stringify(v)},${dataBase})`,context);
+assert.strictEqual(recentScenario.retirementRate,dataBase,'Recent retirement rate equals Base rate');
+
+// Invalid or non-positive levels invalidate the complete history instead of silently bridging gaps.
+for(const bad of [[100,null,102],[100,0,102],[100,-1,102]]){
+  context.window.__marketData.bad={id:'bad',label:'Bad',monthlyLevels:{start:'2020-01',nomTRP:bad}};
+  vm.runInContext("selectMarketHistory('bad')",context);
+  assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0);
+}

@@ -10,7 +10,7 @@ const LABELS={recent:'Recent-based 直近ベース',base:'Base 標準',conservat
 const COLORS={recent:'#5aad8f',base:'#4a90b8',conservative:'#c47e6a'};
 const CLS={recent:'opt',base:'nrm',conservative:'con'};
 const NUMBER_IDS=['currentAge','lifeAge','monthlyExpense','sp500Asset','annualSp500Contribution','annualPension','pensionStartAge','inflationRate'];
-const HISTORY_START_YEAR=1946;
+const SP500_HISTORY_START='1946-01';
 let chartInst=null,HIST_RETURNS=[],HISTORY_META=null,BASE_RATE=null;
 let ACTIVE_MARKET=null;
 
@@ -82,11 +82,13 @@ function monthAtOffset(start,offset){let [y,m]=start.split('-').map(Number);cons
 function ymLabel(x){return`${x.year}-${String(x.month).padStart(2,'0')}`}
 function buildHistoricalReturns(market){
   const d=market&&market.monthlyLevels?market.monthlyLevels:(market&&market.id==='sp500'?window.__lfcSpData:null);
-  if(!d||!Array.isArray(d.nomTRP)||d.nomTRP.length<2){HISTORY_META=null;return[]}
-  const out=[];
+  if(!d||typeof d.start!=='string'||!Array.isArray(d.nomTRP)||d.nomTRP.length<2){HISTORY_META=null;return[]}
+  const firstMonth=market.historyStart||(market.id==='sp500'?SP500_HISTORY_START:d.start),out=[];
   for(let i=1;i<d.nomTRP.length;i++){
-    const ym=monthAtOffset(d.start,i),prev=d.nomTRP[i-1],cur=d.nomTRP[i];
-    if(Number.isFinite(prev)&&Number.isFinite(cur)&&prev>0)out.push({year:ym.year,month:ym.month,nominalReturn:cur/prev-1})
+    const ym=monthAtOffset(d.start,i),label=ymLabel(ym),prev=d.nomTRP[i-1],cur=d.nomTRP[i];
+    if(label<firstMonth)continue;
+    if(!Number.isFinite(prev)||!Number.isFinite(cur)||prev<=0||cur<=0){HISTORY_META=null;return[]}
+    out.push({year:ym.year,month:ym.month,nominalReturn:cur/prev-1})
   }
   if(out.length)HISTORY_META={start:ymLabel(out[0]),end:ymLabel(out[out.length-1]),count:out.length};
   return out
@@ -94,7 +96,7 @@ function buildHistoricalReturns(market){
 function selectMarketHistory(key){ACTIVE_MARKET=getBaseMarket(key);HIST_RETURNS=buildHistoricalReturns(ACTIVE_MARKET);return ACTIVE_MARKET}
 function buildConservativeRequirements(v){if(!HIST_RETURNS.length)return new Map();const N=HIST_RETURNS.length,curAge=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),{adjustedAnnualPension}=getAdjustedAnnualPension(v),monthlyInfl=Math.pow(1+v.inflationRate/100,1/12)-1,real=HIST_RETURNS.map(x=>(1+x.nominalReturn)/(1+monthlyInfl)-1),plans=new Map();let next=new Float64Array(N+1);const firstValidAge=Math.max(curAge,life-N);for(let age=life-1;age>=firstValidAge;age--){const duration=life-age,maxStart=N-duration,current=new Float64Array(N+1),expense=monthlyNetExpense(age,v,adjustedAnnualPension);let worst=-1,worstStart=-1;for(let s=0;s<=maxStart;s++){const denom=1+real[s];const req=Math.max(0,(next[s+1]+expense)/denom);current[s]=req;if(req>worst){worst=req;worstStart=s}}plans.set(age,{requiredTotalAtRetirement:worst,worstStart,duration});next=current}return plans}
 function historicalWindowStats(start,duration){let factor=1;for(let i=0;i<duration;i++)factor*=1+HIST_RETURNS[start+i].nominalReturn;const cagr=Math.pow(factor,12/duration)-1;const a=HIST_RETURNS[start],b=HIST_RETURNS[start+duration-1];return{historyStart:`${a.year}-${String(a.month).padStart(2,'0')}`,historyEnd:`${b.year}-${String(b.month).padStart(2,'0')}`,historyCagr:cagr}}
-function getBaseRate(v){const bm=getBaseMarket(v.baseMarket);return bm?bm.nominalCagr:null}
+function getBaseRate(v){const bm=getBaseMarket(v.baseMarket);if(!bm)return null;if(ACTIVE_MARKET&&ACTIVE_MARKET.id===bm.id&&HIST_RETURNS.length)return historicalWindowStats(0,HIST_RETURNS.length).historyCagr;return Number.isFinite(bm.nominalCagr)?bm.nominalCagr:null}
 function getRecentWindow(duration,baseRate){if(duration===0)return{scenarioRate:baseRate,lookbackMonths:0,recentStart:null,recentEnd:HISTORY_META?HISTORY_META.end:null,usesBase:true};if(duration<0||duration>HIST_RETURNS.length)return null;const start=HIST_RETURNS.length-duration,stats=historicalWindowStats(start,duration);return{scenarioRate:stats.historyCagr,lookbackMonths:duration,recentStart:stats.historyStart,recentEnd:stats.historyEnd,usesBase:false}}
 function calculateRecentScenario(v,baseRate){const cur=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),p=getAdjustedAnnualPension(v),lookbackMonths=life-cur,basis=getRecentWindow(lookbackMonths,baseRate);if(!basis)return{currentAgeMonths:cur,isAchievable:false,unavailable:true,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementRate:baseRate,scenarioRate:null,lookbackMonths};const rate=basis.scenarioRate;let fallback=null;for(let age=cur;age<life;age++){const required=findRequiredFixedAsset(age,baseRate,v),projected=projectAssetsToAge(age,rate,v),coverage=required>0?projected/required*100:Infinity;const row={currentAgeMonths:cur,fireAgeMonths:age,requiredTotalAtRetirement:required,projectedAssetsAtRetirement:projected,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementSurplus:projected-required,coverageRate:coverage,isAchievable:projected>=required,retirementRate:baseRate,...basis};if(!fallback||coverage>fallback.coverageRate)fallback=row;if(row.isAchievable)return row}return Object.assign(fallback||{currentAgeMonths:cur,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementRate:baseRate,...basis},{isAchievable:false,fireAgeMonths:null})}
 function generateHistoricalSeries(startAgeMonth,asset,startIndex,duration,v){const {adjustedAnnualPension}=getAdjustedAnnualPension(v),monthlyInfl=Math.pow(1+v.inflationRate/100,1/12)-1,ages=[startAgeMonth/12],bals=[asset];let b=asset;for(let i=0;i<duration;i++){const r=(1+HIST_RETURNS[startIndex+i].nominalReturn)/(1+monthlyInfl)-1,age=startAgeMonth+i;b=b*(1+r)-monthlyNetExpense(age,v,adjustedAnnualPension);ages.push((age+1)/12);bals.push(b)}return{ages,bals}}
@@ -128,9 +130,9 @@ function updateSimulation(){
   BASE_RATE=getBaseRate(v);
   const historyBaseRate=HIST_RETURNS.length?historicalWindowStats(0,HIST_RETURNS.length).historyCagr:null;
   const results={
-    recent:historyBaseRate==null?makeUnavailableScenario(v):calculateRecentScenario(v,historyBaseRate),
+    recent:historyBaseRate==null||BASE_RATE==null?makeUnavailableScenario(v):calculateRecentScenario(v,BASE_RATE),
     base:BASE_RATE==null?makeUnavailableScenario(v):calculateFixedScenario(BASE_RATE,v),
-    conservative:historyBaseRate==null?makeUnavailableScenario(v):calculateConservativeScenario(v,historyBaseRate)
+    conservative:historyBaseRate==null||BASE_RATE==null?makeUnavailableScenario(v):calculateConservativeScenario(v,BASE_RATE)
   },chartData={};
   if(results.recent.isAchievable)chartData.recent=generateFixedSeries(results.recent.fireAgeMonths,results.recent.requiredTotalAtRetirement,results.recent.retirementRate,v);
   if(results.base.isAchievable)chartData.base=generateFixedSeries(results.base.fireAgeMonths,results.base.requiredTotalAtRetirement,results.base.scenarioRate,v);

@@ -5,11 +5,11 @@ function runDataFile(path){
   const c={window:{}};
   vm.createContext(c);
   vm.runInContext(fs.readFileSync(path,'utf8'),c);
-  return c.window.__lfcSpData;
+  return c.window.__lfcSpData||c.window.__localSp500Data;
 }
 
-// The Pages copy must be byte-for-byte equivalent at the data level to the
-// pinned source file committed in data/.
+// The Pages copy must be exactly equivalent at the data level to the pinned
+// source file committed in data/. JSON comparison avoids cross-vm prototypes.
 const sourceData=runDataFile('data/sp500.js');
 const localData=runDataFile('docs/sp500-data.js');
 assert.strictEqual(sourceData.start,'1871-01');
@@ -17,7 +17,7 @@ assert.strictEqual(sourceData.end,'2026-08');
 assert.strictEqual(sourceData.nomTRP.length,1868);
 assert.strictEqual(localData.start,sourceData.start);
 assert.strictEqual(localData.end,sourceData.end);
-assert.deepStrictEqual(localData.nomTRP,sourceData.nomTRP);
+assert.strictEqual(JSON.stringify(localData.nomTRP),JSON.stringify(sourceData.nomTRP));
 
 const context={window:{},document:{addEventListener(){}},console,Float64Array,Math};
 vm.createContext(context);

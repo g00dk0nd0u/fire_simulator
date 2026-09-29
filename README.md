@@ -16,8 +16,8 @@
 
 ## 月次系列の追加調査
 
-- **NASDAQ-100:** Nasdaq公式Historyの Total Return Index **XNDX**（USD）とDownload機能を第一候補としました。Price IndexのNDXやQQQは代用対象外です。この実行環境では `indexes.nasdaqomx.com` / `api.nasdaq.com` への接続がHTTP proxyで拒否され、レスポンスおよび利用条件を検証できなかったため未収録です。
-- **MSCI ACWI:** MSCI公式Index code **892400** の **Gross Return USD** を第一候補とし、Index page、download機能、公開データエンドポイントを対象にしました。公式factsheetでは設定来期間とCAGRは確認対象になりますが、長期月次Index Levelは含まれません。この実行環境では `www.msci.com` への接続が拒否され、download endpointと利用条件を検証できなかったため未収録です。Net Return/Price系列やACWI ETFは代用していません。
+- **NASDAQ-100:** Nasdaq公式Historyの Total Return Index **XNDX**（USD）と、Nasdaq Inc.を原ソースとするFRED **NASDAQXNDX**（日次、1999-03-04以降）を候補にしました。FRED上の系列ページは第三者データの著作権・利用条件が原提供者に帰属するため、公開リポジトリへの値の再配布許諾を確認できるまでは採用しません。Price IndexのNDXやQQQは代用対象外です。この実行環境ではNasdaq/FREDへの接続がHTTP proxyで拒否され、Download内容と原提供者ライセンスを検証できませんでした。
+- **MSCI ACWI:** MSCI公式Index code **892400** の **Gross Return USD** を第一候補とし、CurvoのMSCI ACWI USD（2000-12以降）も補助候補にしました。MSCI factsheetには長期月次Index Levelがなく、CurvoについてもGross/Netの区分、元系列、および値の再配布許諾を確認できませんでした。この実行環境ではMSCI/Curvoへの接続も拒否されたため、いずれも未収録です。Net Return/Price系列やACWI ETFは代用していません。
 - **S&P 500:** 現行の固定commitにある配当再投資込み `nomTRP` のローカル化を試みましたが、GitHub/jsDelivrへの接続が同様に拒否されました。計算側では従来互換の1946-01フィルタを復元しています。
 
 出典の真正性、系列種別、再配布条件を確認できない数値を生成・補間して収録することはしていません。

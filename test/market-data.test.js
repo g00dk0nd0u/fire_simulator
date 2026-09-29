@@ -25,7 +25,6 @@ assert(Math.abs(actual.requiredTotalAtRetirement-wanted.worst)<1e-12,'DP equals 
 assert.strictEqual(actual.worstStart,wanted.start);
 vm.runInContext("selectMarketHistory('acwi')",context);
 assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0,'no cross-index fallback');
-console.log('market-data tests passed');
 
 // S&P 500 preserves the legacy 1946-01 cut-off even when the raw series starts earlier.
 context.window.__lfcSpData={start:'1945-10',nomTRP:[90,91,92,93,94,95]};
@@ -49,3 +48,33 @@ for(const bad of [[100,null,102],[100,0,102],[100,-1,102]]){
   vm.runInContext("selectMarketHistory('bad')",context);
   assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0);
 }
+// Invalid keys are rejected; only loadState performs explicit legacy-value migration.
+assert.strictEqual(vm.runInContext("getBaseMarket('missing')",context),null);
+
+// Displayed Base rate uses the same monthly-series CAGR as the calculation.
+vm.runInContext("selectMarketHistory('test')",context);
+const elements={};
+for(const id of ['currentAge','lifeAge','monthlyExpense','sp500Asset','annualSp500Contribution','annualPension','pensionStartAge','inflationRate']){
+  elements[id]={value:v[id],min:0,max:120,style:{setProperty(){}}};
+  elements[id+'Display']={textContent:''};
+}
+elements.baseMarketDisplay={textContent:''};
+elements.pensionPlanDisplay={textContent:''};
+const cards={innerHTML:'',children:[],appendChild(x){this.children.push(x)}};
+elements['cards-grid']=cards;
+context.document.getElementById=id=>elements[id]||null;
+context.document.createElement=()=>({className:'',innerHTML:''});
+vm.runInContext(`updateSliderDisplays(${JSON.stringify(Object.assign({},v,{baseMarket:'test'}))})`,context);
+assert.strictEqual(elements.baseMarketDisplay.textContent,`${Number((dataBase*100).toFixed(2))}% / 年`);
+
+// Unavailable cards preserve H and explicitly label Conservative as insufficient history.
+vm.runInContext("ACTIVE_MARKET={id:'acwi',label:'MSCI ACWI'}",context);
+const unavailable=vm.runInContext(`makeUnavailableScenario(${JSON.stringify({ ...v,currentAge:45,lifeAge:100,baseMarket:'acwi'})})`,context);
+assert.strictEqual(unavailable.lookbackMonths,55*12);
+context.unavailable=unavailable;
+vm.runInContext("renderCards({recent:unavailable,conservative:unavailable})",context);
+assert(cards.children[0].innerHTML.includes('直近55年 · 履歴不足'));
+assert(cards.children[1].innerHTML.includes('MSCI ACWI · 履歴不足'));
+assert(!cards.children[1].innerHTML.includes('Worst Path'));
+
+console.log('market-data tests passed');

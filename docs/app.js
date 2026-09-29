@@ -15,9 +15,9 @@ let chartInst=null,HIST_RETURNS=[],HISTORY_META=null,BASE_RATE=null;
 let ACTIVE_MARKET=null;
 
 function getBaseMarketData(){return window.__marketData||{}}
-function getBaseMarket(key){const data=getBaseMarketData();return data[key]||data.sp500||null}
+function getBaseMarket(key){return getBaseMarketData()[key]||null}
 function getDefaultValues(){return{currentAge:45,lifeAge:100,monthlyExpense:280000,sp500Asset:18000000,annualSp500Contribution:1200000,annualPension:1100000,pensionStartAge:75,inflationRate:1.25,baseMarket:'sp500'}}
-function loadState(){try{return Object.assign({},getDefaultValues(),JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'))}catch{return getDefaultValues()}}
+function loadState(){try{const v=Object.assign({},getDefaultValues(),JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'));if(!getBaseMarket(v.baseMarket))v.baseMarket='sp500';return v}catch{return getDefaultValues()}}
 function saveState(v){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(v))}catch{}}
 function getFormValues(){
   const v={};
@@ -57,7 +57,8 @@ function updateSliderDisplays(v){
   }
   const bm=getBaseMarket(v.baseMarket);
   const bd=document.getElementById('baseMarketDisplay');
-  if(bm&&bd)bd.textContent=`${formatPercentCompact(bm.nominalCagr*100)} / 年`;
+  const rate=getBaseRate(v);
+  if(bd)bd.textContent=rate==null?'履歴不足':`${formatPercentCompact(rate*100)} / 年`;
 }
 function validateInputs(v){const e=[];if(v.lifeAge<=v.currentAge)e.push('想定寿命は現在年齢より大きくしてください。');if(v.monthlyExpense<0||v.sp500Asset<0||v.annualSp500Contribution<0||v.annualPension<0)e.push('金額は0以上にしてください。');if(v.pensionStartAge<60||v.pensionStartAge>75)e.push('年金受給開始年齢は60〜75歳です。');if(v.inflationRate<0||v.inflationRate>4.5)e.push('インフレ率は0〜4.5%です。');if(!getBaseMarket(v.baseMarket))e.push('運用指数を選択してください。');return e}
 function showError(a){const e=document.getElementById('error-msg');e.textContent=a.join('\n');e.style.display='block'}
@@ -93,7 +94,7 @@ function buildHistoricalReturns(market){
   if(out.length)HISTORY_META={start:ymLabel(out[0]),end:ymLabel(out[out.length-1]),count:out.length};
   return out
 }
-function selectMarketHistory(key){ACTIVE_MARKET=getBaseMarket(key);HIST_RETURNS=buildHistoricalReturns(ACTIVE_MARKET);return ACTIVE_MARKET}
+function selectMarketHistory(key){ACTIVE_MARKET=getBaseMarket(key);HIST_RETURNS=ACTIVE_MARKET?buildHistoricalReturns(ACTIVE_MARKET):[];if(!ACTIVE_MARKET)HISTORY_META=null;return ACTIVE_MARKET}
 function buildConservativeRequirements(v){if(!HIST_RETURNS.length)return new Map();const N=HIST_RETURNS.length,curAge=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),{adjustedAnnualPension}=getAdjustedAnnualPension(v),monthlyInfl=Math.pow(1+v.inflationRate/100,1/12)-1,real=HIST_RETURNS.map(x=>(1+x.nominalReturn)/(1+monthlyInfl)-1),plans=new Map();let next=new Float64Array(N+1);const firstValidAge=Math.max(curAge,life-N);for(let age=life-1;age>=firstValidAge;age--){const duration=life-age,maxStart=N-duration,current=new Float64Array(N+1),expense=monthlyNetExpense(age,v,adjustedAnnualPension);let worst=-1,worstStart=-1;for(let s=0;s<=maxStart;s++){const denom=1+real[s];const req=Math.max(0,(next[s+1]+expense)/denom);current[s]=req;if(req>worst){worst=req;worstStart=s}}plans.set(age,{requiredTotalAtRetirement:worst,worstStart,duration});next=current}return plans}
 function historicalWindowStats(start,duration){let factor=1;for(let i=0;i<duration;i++)factor*=1+HIST_RETURNS[start+i].nominalReturn;const cagr=Math.pow(factor,12/duration)-1;const a=HIST_RETURNS[start],b=HIST_RETURNS[start+duration-1];return{historyStart:`${a.year}-${String(a.month).padStart(2,'0')}`,historyEnd:`${b.year}-${String(b.month).padStart(2,'0')}`,historyCagr:cagr}}
 function getBaseRate(v){const bm=getBaseMarket(v.baseMarket);if(!bm)return null;if(ACTIVE_MARKET&&ACTIVE_MARKET.id===bm.id&&HIST_RETURNS.length)return historicalWindowStats(0,HIST_RETURNS.length).historyCagr;return Number.isFinite(bm.nominalCagr)?bm.nominalCagr:null}
@@ -107,7 +108,8 @@ function renderCards(results){
   for(const [key,r] of Object.entries(results)){
     const card=document.createElement('div');card.className=`rcard ${CLS[key]}`;
     let badge='';
-    if(key==='conservative')badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · Worst Path`;
+    if(key==='conservative'&&r.unavailable)badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · 履歴不足`;
+    else if(key==='conservative')badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · Worst Path`;
     else if(r.unavailable||r.scenarioRate==null)badge=key==='recent'?`${formatLookbackMonths(r.lookbackMonths||0)} · 履歴不足`:'履歴データ未取得';
     else if(key==='recent')badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · ${formatLookbackMonths(r.lookbackMonths||0)} · 年率 ${formatPercentCompact(r.scenarioRate*100)}`;
     else {const bm=getBaseMarket(r.baseMarket);badge=`${bm?bm.label:'Base'} · 最長期間 · 年率 ${formatPercentCompact(r.scenarioRate*100)}`}
@@ -115,18 +117,17 @@ function renderCards(results){
     let extra='';
     if(key==='conservative'&&!r.unavailable&&r.worstStart!=null){extra=`<div class="nb"><div class="nb-lbl">Historical Stress 最悪期間</div><div class="nb-val small">${r.historyStart} → ${r.historyEnd}</div><div class="nb-sub">${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} / ${Math.floor(r.duration/12)}年${r.duration%12?`${r.duration%12}ヶ月`:''} / 同期間CAGR ${formatPercentCompact(r.historyCagr*100)} / ${HISTORY_META.start}以降を全走査</div></div>`}
     else if(key==='recent'&&!r.unavailable&&r.scenarioRate!=null){extra=`<div class="nb"><div class="nb-lbl">Recent Basis 残り人生と同期間の直近実績</div><div class="nb-val small">${r.recentStart} → ${r.recentEnd}</div><div class="nb-sub">${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} / ${formatLookbackMonths(r.lookbackMonths)}のTotal Return CAGR（現在年齢→想定寿命と同じ期間）</div></div>`}
-    else if(key==='base'&&!r.unavailable&&r.scenarioRate!=null){const bm=getBaseMarket(r.baseMarket);if(bm)extra=`<div class="nb"><div class="nb-lbl">Long-term Basis 長期実績</div><div class="nb-val small">${bm.label}: ${bm.start} → ${bm.end}</div><div class="nb-sub">${bm.basis} / ローカル固定データ</div></div>`}
+    else if(key==='base'&&!r.unavailable&&r.scenarioRate!=null){const bm=getBaseMarket(r.baseMarket),period=HISTORY_META&&ACTIVE_MARKET&&bm&&ACTIVE_MARKET.id===bm.id?`${HISTORY_META.start} → ${HISTORY_META.end}`:`${bm.start} → ${bm.end}`;if(bm)extra=`<div class="nb"><div class="nb-lbl">Long-term Basis 長期実績</div><div class="nb-val small">${bm.label}: ${period}</div><div class="nb-sub">${bm.basis} / ローカル固定データ</div></div>`}
     card.innerHTML=`<div class="rcard-head"><div><div class="rcard-name">${LABELS[key]}</div><div class="rcard-rate">${badge}</div></div></div><div class="nb"><div class="nb-lbl">FIRE Age FIRE年齢</div><div class="nb-val gold">${r.isAchievable?formatAgeWithMonths(r.fireAgeMonths):'未達'}</div><div class="nb-sub">${fireSub}</div></div><div class="csep"></div><div class="nb"><div class="nb-lbl">Required Principal 必要元本</div><div class="nb-val">${r.requiredTotalAtRetirement!=null?formatOkuMan(r.requiredTotalAtRetirement):'—'}</div><div class="nb-sub">${r.requiredTotalAtRetirement!=null?formatYen(r.requiredTotalAtRetirement):''}</div></div>${extra}<div class="nb"><div class="nb-lbl">Pension Income 年金受給額</div><div class="nb-val">${formatOkuMan(r.adjustedAnnualPension||0)}</div><div class="nb-sub">${formatPensionAdjustmentNote(r.pensionAdjustRate||1,r.pensionStartAge??PENSION_BASE_AGE)}</div></div>`;
     grid.appendChild(card)
   }
 }
 function renderChart(data){const fb=document.getElementById('chart-fallback');fb.style.display='none';if(chartInst){chartInst.destroy();chartInst=null}if(!Object.keys(data).length){fb.textContent='表示できる成立シナリオがありません。';fb.style.display='block';return}if(typeof Chart==='undefined'){fb.textContent='Chart.jsを読み込めませんでした。';fb.style.display='block';return}const ctx=document.getElementById('myChart').getContext('2d');chartInst=new Chart(ctx,{type:'line',data:{datasets:Object.entries(data).map(([key,s])=>({label:LABELS[key],data:s.ages.map((x,i)=>({x,y:s.bals[i]})),borderColor:COLORS[key],backgroundColor:COLORS[key]+'12',borderWidth:4,pointRadius:0,pointHoverRadius:6,tension:.25,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{type:'linear',title:{display:true,text:'年齢（歳）'},ticks:{stepSize:5}},y:{title:{display:true,text:'万円'},ticks:{callback:v=>Math.round(v/10000).toLocaleString('ja-JP')}}},plugins:{legend:{position:'top',align:window.innerWidth<=640?'center':'end'},tooltip:{callbacks:{title:items=>formatAgeWithMonths(Math.round(items[0].parsed.x*12)),label:item=>` ${item.dataset.label}: ${formatOkuMan(item.parsed.y)}`}}}}})}
-function makeUnavailableScenario(v){const cur=toMonthAge(v.currentAge),p=getAdjustedAnnualPension(v);return{currentAgeMonths:cur,isAchievable:false,unavailable:true,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge}}
+function makeUnavailableScenario(v){const cur=toMonthAge(v.currentAge),p=getAdjustedAnnualPension(v);return{currentAgeMonths:cur,isAchievable:false,unavailable:true,lookbackMonths:toMonthAge(v.lifeAge)-cur,baseMarket:v.baseMarket,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge}}
 function updateSimulation(){
   hideError();hideInfo();
-  const v=getFormValues();updateSliderDisplays(v);saveState(v);
+  const v=getFormValues();selectMarketHistory(v.baseMarket);updateSliderDisplays(v);saveState(v);
   const errors=validateInputs(v);if(errors.length){showError(errors);return}
-  ACTIVE_MARKET=selectMarketHistory(v.baseMarket);
   BASE_RATE=getBaseRate(v);
   const historyBaseRate=HIST_RETURNS.length?historicalWindowStats(0,HIST_RETURNS.length).historyCagr:null;
   const results={

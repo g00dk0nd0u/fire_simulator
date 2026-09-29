@@ -1,0 +1,20 @@
+name: PR13 temporary validation
+
+on:
+  push:
+    branches:
+      - codex/add-full-index-support-for-recent-based-and-conservative
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check docs/sp500-data.js
+      - run: node --check docs/market-data.js
+      - run: node --check docs/app.js
+      - run: node test/market-data.test.js
+      - run: git diff --check

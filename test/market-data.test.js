@@ -87,4 +87,8 @@ const html=fs.readFileSync('docs/index.html','utf8');
 assert(html.includes('<script src="sp500-data.js"></script>'));
 assert(!html.includes('cdn.jsdelivr.net/gh/GaMa96/lfc-sp500-data'));
 
+// app.js must consume only market.monthlyLevels; no legacy S&P global fallback.
+const appSource=fs.readFileSync('docs/app.js','utf8');
+assert(!appSource.includes('window.__lfcSpData'));
+
 console.log('market-data tests passed');

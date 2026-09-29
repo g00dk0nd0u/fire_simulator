@@ -6,8 +6,8 @@
 ## できること
 - 入力値をスライダーで直感的に調整できます
 - **直近ベース / 標準 / 保守** の3シナリオを同時比較
-- **Base 標準** はプルダウンで `S&P 500` / `MSCI ACWI` を切り替え可能
-- Baseの年率は、各指数で利用する最長期間の公表済みTotal/Gross Return CAGRをローカル固定データから読み込み
+- **Base 標準** はプルダウンで `S&P 500` / `MSCI ACWI（オール・カントリー）` / `NASDAQ-100` を切り替え可能
+- Baseの年率は、各指数で利用する最長期間の公表済み長期CAGRをローカル固定データから読み込み
 - 直近ベースは、「想定寿命−現在年齢」と同じ長さだけ最新確定月から遡ったS&P 500 Total Return CAGRを1つの固定年率としてFIRE前の資産形成に使用
 - 保守は、FIRE開始から想定寿命までと同じ月数について、1946年以降のS&P 500月次トータルリターンを全ローリング走査し、必要元本が最大になる実績経路を採用
 - FIRE後の資産推移をグラフ表示（Chart.js）
@@ -16,8 +16,9 @@
 ## Base運用指数
 `docs/base-market-data.js` にBase用データをハードコピーしています。
 
-- `S&P 500`: 1946年開始〜2026年、配当再投資込み名目CAGR 11.23%
-- `MSCI ACWI`: 1987-12-31〜2026-07-31、USD Gross Return名目CAGR 8.89%
+- `S&P 500`: 1946-01〜2026-08、配当再投資込み名目CAGR 11.23%
+- `MSCI ACWI`: 1987-12-31〜2026-04-30、USD Gross Return名目CAGR 8.82%
+- `NASDAQ-100`: 1985-01-31〜2024-12-31、Nasdaq公表の設定来複利年率 14.25%
 
 入力インフレ率を使い、これらの名目CAGRを実質リターンに変換してBase計算に使用します。
 
@@ -48,7 +49,8 @@
 
 ## データ・ライブラリ
 - Base固定データ: `docs/base-market-data.js`
-- MSCI ACWI: MSCI ACWI Index Factsheet (USD, Gross Returns), 2026-07-31 時点
+- MSCI ACWI: MSCI ACWI Index Factsheet (USD, Gross Returns), 2026-04-30 時点の設定来年率 8.82%
+- NASDAQ-100: Nasdaq公式の40周年資料、1985-01-31設定来〜2024-12-31の複利年率 14.25%
 - S&P 500 Base: 1946年開始の配当再投資込み長期リターンを固定値として保存
 - Recent / Conservative 用S&P 500月次履歴: `GaMa96/lfc-sp500-data` の `nomTRP` をコミット `ac66267d99aaa0f88c41f93acabc639a9a4dd908` に固定して参照
 - グラフ描画: Chart.js（CDN）

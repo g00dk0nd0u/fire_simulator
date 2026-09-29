@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/GaMa96/lfc-sp500-data@ac66267d99aaa0f88c41f93acabc639a9a4dd908/data/sp500.js"></script>
-<script src="base-market-data.js"></script>
+<script src="market-data.js"></script>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="base-market.css">
 </head>
@@ -18,7 +18,7 @@
   <div class="chart-card"><div class="chart-head"><span class="chart-title">Asset Projection 資産の見通し</span><span class="chart-note">各シナリオのFIRE時点を起点に表示</span></div><canvas id="myChart"></canvas><div id="chart-fallback" class="chart-fallback"></div></div>
   <p class="sec">Planning Inputs 入力条件</p>
   <div class="input-panel"><div class="form-grid">
-    <div class="fg"><div class="fg-head"><label for="baseMarket"><span>Base Benchmark</span><span class="label-ja">Base運用指数</span></label><span class="slider-value" id="baseMarketDisplay"></span></div><select id="baseMarket"><option value="sp500">S&amp;P 500</option><option value="acwi">MSCI ACWI（オール・カントリー）</option><option value="nasdaq100">NASDAQ-100</option></select><span class="unit"><span>利用可能な最長期間</span><span>名目CAGR</span></span><div class="field-note">Baseのみ切替。Recent / Conservative はS&amp;P 500月次履歴を使用。</div></div>
+    <div class="fg"><div class="fg-head"><label for="baseMarket"><span>Investment Index</span><span class="label-ja">運用指数（全シナリオ共通）</span></label><span class="slider-value" id="baseMarketDisplay"></span></div><select id="baseMarket"><option value="sp500">S&amp;P 500</option><option value="acwi">MSCI ACWI（オール・カントリー）</option><option value="nasdaq100">NASDAQ-100</option></select><span class="unit"><span>利用可能な最長期間</span><span>名目CAGR</span></span><div class="field-note">3シナリオすべてに適用。月次Total Return履歴がない指数は履歴不足として表示し、他指数へフォールバックしません。</div></div>
     <div class="fg"><div class="fg-head"><label for="currentAge"><span>Current Age</span><span class="label-ja">現在年齢</span></label><span class="slider-value" id="currentAgeDisplay"></span></div><input type="range" id="currentAge" min="0" max="99" step="1"><span class="unit"><span>0-99</span><span>歳</span></span></div>
     <div class="fg"><div class="fg-head"><label for="lifeAge"><span>Life Expectancy</span><span class="label-ja">想定寿命</span></label><span class="slider-value" id="lifeAgeDisplay"></span></div><input type="range" id="lifeAge" min="1" max="120" step="1"><span class="unit"><span>1-120</span><span>歳</span></span></div>
     <div class="fg"><div class="fg-head"><label for="monthlyExpense"><span>Monthly Spending</span><span class="label-ja">月間生活費</span></label><span class="slider-value" id="monthlyExpenseDisplay"></span></div><input type="range" id="monthlyExpense" min="0" max="1000000" step="10000"><span class="unit"><span>0-100万円</span><span>円 / 月</span></span></div>

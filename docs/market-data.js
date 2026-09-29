@@ -5,9 +5,10 @@
 // Rates are nominal long-term compound/gross/total-return CAGRs over the
 // longest published history used for each benchmark; app.js converts them to
 // real returns using the user's inflation input.
-window.__baseMarketData = Object.freeze({
+window.__marketData = Object.freeze({
   sp500: Object.freeze({
     id: 'sp500',
+    monthlyLevels: null,
     label: 'S&P 500',
     nominalCagr: 0.1123,
     start: '1946-01',
@@ -19,6 +20,7 @@ window.__baseMarketData = Object.freeze({
   }),
   acwi: Object.freeze({
     id: 'acwi',
+    monthlyLevels: null,
     label: 'MSCI ACWI',
     nominalCagr: 0.0882,
     start: '1987-12-31',
@@ -30,6 +32,7 @@ window.__baseMarketData = Object.freeze({
   }),
   nasdaq100: Object.freeze({
     id: 'nasdaq100',
+    monthlyLevels: null,
     label: 'NASDAQ-100',
     nominalCagr: 0.1425,
     start: '1985-01-31',

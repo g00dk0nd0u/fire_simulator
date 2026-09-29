@@ -1,56 +1,36 @@
 # FIRE Calculator
 
-シンプルな **FIRE（Financial Independence, Retire Early）試算ツール** です。  
-年齢・生活費・資産・積立額・年金・インフレ率を調整すると、3つのシナリオでFIRE到達年齢を比較できます。
+年齢・生活費・資産・積立額・年金・インフレ率から、Recent-based / Base / Conservative の3シナリオを比較する静的なFIRE試算ツールです。
 
-## できること
-- 入力値をスライダーで直感的に調整できます
-- **直近ベース / 標準 / 保守** の3シナリオを同時比較
-- **Base 標準** はプルダウンで `S&P 500` / `MSCI ACWI（オール・カントリー）` / `NASDAQ-100` を切り替え可能
-- Baseの年率は、各指数で利用する最長期間の公表済み長期CAGRをローカル固定データから読み込み
-- 直近ベースは、「想定寿命−現在年齢」と同じ長さだけ最新確定月から遡ったS&P 500 Total Return CAGRを1つの固定年率としてFIRE前の資産形成に使用
-- 保守は、FIRE開始から想定寿命までと同じ月数について、1946年以降のS&P 500月次トータルリターンを全ローリング走査し、必要元本が最大になる実績経路を採用
-- FIRE後の資産推移をグラフ表示（Chart.js）
-- 入力エラー時のバリデーション表示
+## 運用指数
 
-## Base運用指数
-`docs/base-market-data.js` にBase用データをハードコピーしています。
+画面の **Investment Index / 運用指数** は3シナリオ共通です。別指数への暗黙のフォールバックは行いません。
 
-- `S&P 500`: 1946-01〜2026-08、配当再投資込み名目CAGR 11.23%
-- `MSCI ACWI`: 1987-12-31〜2026-04-30、USD Gross Return名目CAGR 8.82%
-- `NASDAQ-100`: 1985-01-31〜2024-12-31、Nasdaq公表の設定来複利年率 14.25%
+| 指数 | 採用系列 | 期間 | リターン種別 | 出典 | 月次履歴の収録状況 |
+|---|---|---:|---|---|---|
+| S&P 500 | `nomTRP` | 1946-01〜2026-08 | 配当再投資込み名目 Total Return | [GaMa96/lfc-sp500-data（commit `ac66267d…`）](https://github.com/GaMa96/lfc-sp500-data/tree/ac66267d99aaa0f88c41f93acabc639a9a4dd908) | 従来互換の固定CDN参照（ローカル化未完） |
+| MSCI ACWI | MSCI ACWI Index (USD), Gross Returns | 1987-12-31〜2026-04-30 | Gross Return | [MSCI ACWI factsheet](https://www.msci.com/documents/10199/255599/msci-acwi.pdf) | **未収録**。factsheetの設定来CAGRのみ採用 |
+| NASDAQ-100 | Nasdaq-100 Index | 1985-01-31〜2024-12-31 | Nasdaq公表の設定来 Compound Return | [Nasdaq 40周年資料](https://www.nasdaq.com/articles/nasdaq-100-indexr-celebrates-40-years-innovation) | **未収録**。資料の設定来CAGRのみ採用 |
 
-入力インフレ率を使い、これらの名目CAGRを実質リターンに変換してBase計算に使用します。
+`docs/market-data.js` に指数ID、表示名、期間、Base用名目CAGR、系列種別、出典メタデータを固定しています。MSCI ACWIとNASDAQ-100について、検証可能な公式長期月次Total Return系列を取得できなかったため、ETF（ACWI/QQQ）の価格を代用していません。この2指数を選ぶとBaseは計算できますが、Recent-based / Conservativeは「履歴不足」と表示します。
 
-> Baseのみ指数を切り替えます。Recent-based / Conservative は従来どおりS&P 500月次履歴を使用します。
+## 計算定義
+
+- **Base**: 選択指数について公表された利用可能な最長期間の名目CAGRを使用します。現在はS&P 500 11.23%、MSCI ACWI 8.82%、NASDAQ-100 14.25%です。
+- **Recent-based**: `H = 想定寿命 − 現在年齢` とし、選択指数の末尾Hか月だけからTotal Return CAGRを算出し、全FIRE候補のFIRE前資産形成に固定使用します。FIRE後の必要元本には同じ指数のBase CAGRを使います。Hか月に満たない場合は履歴不足です。
+- **Conservative**: 選択指数の月次リターン順序を保持し、各FIRE候補から想定寿命までと同じ長さの全履歴窓を後ろ向きDPで評価します。必要元本が最大の実績経路をWorst Pathに採用します。FIRE前は同じ指数のBase CAGRを使用します。十分な窓がなければその候補は評価しません。
+- **インフレ**: 名目月次リターンをユーザー入力のインフレ率で実質化し、生活費は現在価値で固定します（二重計上しません）。
+- 年金は65歳開始時の入力額を基準に、60〜64歳は1か月0.4%減、66〜75歳は1か月0.7%増として月次キャッシュフローへ反映します。
+
+指数ごとに利用可能な履歴期間は異なります。過去実績は将来の運用成果を保証しません。
 
 ## 使い方
-1. このリポジトリをクローン
-2. `docs/index.html` をブラウザで開く（GitHub Pages 公開用ファイル）
-3. スライダーとBase運用指数のプルダウンを動かして結果を確認
 
-> ビルドやサーバー起動は不要です。
+`docs/index.html` をブラウザで開きます。ビルドは不要です。Chart.jsと、現時点ではS&P 500月次系列だけが外部CDN参照です。
 
-## ファイル構成
-- `docs/index.html` : GitHub Pages 公開用エントリ / UI
-- `docs/app.js` : FIRE計算・年金計算・グラフ描画ロジック
-- `docs/base-market-data.js` : Base用のローカル固定市場データ
-- `docs/base-market.css` : Base運用指数プルダウンの追加スタイル
-- `docs/style.css` : 既存UIスタイル
+## ファイル
 
-## 計算メモ
-- **Recent-based 直近ベース**: `H = 想定寿命 − 現在年齢` の月数とし、最新確定月から `H` ヶ月遡ったS&P 500 Total Return CAGRを1つだけ計算します。その固定年率を全FIRE候補のFIRE前資産形成に使用します。例: 現在45歳・想定寿命100歳なら直近55年CAGRを使用します。FIRE後の必要元本計算はS&P 500の長期CAGRを使用します。
-- **Base 標準**: 選択したBase運用指数のローカル固定CAGRを使用します。
-- **Conservative 保守**: 固定年率ではなく、戦後のS&P 500の実際の月次リターン順序を使います。各FIRE候補月について「FIRE開始→想定寿命」の残存月数と同じ長さの全履歴窓を評価し、必要元本が最大になる窓をストレスケースとします。
-- 保守のFIRE前資産形成はS&P 500の長期CAGRを使用し、FIRE後だけ履歴ストレスを適用します。
-- 月間生活費は現在価値ベースで一定とし、名目リターンを入力インフレ率で実質化して計算します。
-- 年金入力は65歳から受給する場合の年額を基準とします。60〜64歳の繰上げは1か月あたり0.4%減額、66〜75歳の繰下げは1か月あたり0.7%増額（75歳で最大84%）として自動補正します。
-- 年金は受給開始前は0円、開始月以降は補正後の年金額を月次キャッシュフローとして各シナリオの必要元本計算に反映します。画面には選択した開始年齢の年金額と、65歳開始との単純累計損益分岐年齢を表示します。
-
-## データ・ライブラリ
-- Base固定データ: `docs/base-market-data.js`
-- MSCI ACWI: MSCI ACWI Index Factsheet (USD, Gross Returns), 2026-04-30 時点の設定来年率 8.82%
-- NASDAQ-100: Nasdaq公式の40周年資料、1985-01-31設定来〜2024-12-31の複利年率 14.25%
-- S&P 500 Base: 1946年開始の配当再投資込み長期リターンを固定値として保存
-- Recent / Conservative 用S&P 500月次履歴: `GaMa96/lfc-sp500-data` の `nomTRP` をコミット `ac66267d99aaa0f88c41f93acabc639a9a4dd908` に固定して参照
-- グラフ描画: Chart.js（CDN）
+- `docs/index.html`: UI
+- `docs/app.js`: FIRE・年金・履歴窓・後ろ向きDP計算
+- `docs/market-data.js`: 指数メタデータとBase前提
+- `docs/style.css`, `docs/base-market.css`: スタイル

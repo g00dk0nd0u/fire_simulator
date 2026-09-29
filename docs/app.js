@@ -12,8 +12,9 @@ const CLS={recent:'opt',base:'nrm',conservative:'con'};
 const NUMBER_IDS=['currentAge','lifeAge','monthlyExpense','sp500Asset','annualSp500Contribution','annualPension','pensionStartAge','inflationRate'];
 const HISTORY_START_YEAR=1946;
 let chartInst=null,HIST_RETURNS=[],HISTORY_META=null,BASE_RATE=null;
+let ACTIVE_MARKET=null;
 
-function getBaseMarketData(){return window.__baseMarketData||{}}
+function getBaseMarketData(){return window.__marketData||{}}
 function getBaseMarket(key){const data=getBaseMarketData();return data[key]||data.sp500||null}
 function getDefaultValues(){return{currentAge:45,lifeAge:100,monthlyExpense:280000,sp500Asset:18000000,annualSp500Contribution:1200000,annualPension:1100000,pensionStartAge:75,inflationRate:1.25,baseMarket:'sp500'}}
 function loadState(){try{return Object.assign({},getDefaultValues(),JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'))}catch{return getDefaultValues()}}
@@ -58,7 +59,7 @@ function updateSliderDisplays(v){
   const bd=document.getElementById('baseMarketDisplay');
   if(bm&&bd)bd.textContent=`${formatPercentCompact(bm.nominalCagr*100)} / 年`;
 }
-function validateInputs(v){const e=[];if(v.lifeAge<=v.currentAge)e.push('想定寿命は現在年齢より大きくしてください。');if(v.monthlyExpense<0||v.sp500Asset<0||v.annualSp500Contribution<0||v.annualPension<0)e.push('金額は0以上にしてください。');if(v.pensionStartAge<60||v.pensionStartAge>75)e.push('年金受給開始年齢は60〜75歳です。');if(v.inflationRate<0||v.inflationRate>4.5)e.push('インフレ率は0〜4.5%です。');if(!getBaseMarket(v.baseMarket))e.push('Base運用指数を選択してください。');return e}
+function validateInputs(v){const e=[];if(v.lifeAge<=v.currentAge)e.push('想定寿命は現在年齢より大きくしてください。');if(v.monthlyExpense<0||v.sp500Asset<0||v.annualSp500Contribution<0||v.annualPension<0)e.push('金額は0以上にしてください。');if(v.pensionStartAge<60||v.pensionStartAge>75)e.push('年金受給開始年齢は60〜75歳です。');if(v.inflationRate<0||v.inflationRate>4.5)e.push('インフレ率は0〜4.5%です。');if(!getBaseMarket(v.baseMarket))e.push('運用指数を選択してください。');return e}
 function showError(a){const e=document.getElementById('error-msg');e.textContent=a.join('\n');e.style.display='block'}
 function hideError(){document.getElementById('error-msg').style.display='none'}
 function showInfo(s){const e=document.getElementById('info-msg');e.textContent=s;e.style.display='block'}
@@ -79,10 +80,20 @@ function generateFixedSeries(startAgeMonth,asset,rate,v){const mr=getScenarioMon
 function calculateFixedScenario(rate,v){const cur=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),p=getAdjustedAnnualPension(v);let fallback=null;for(let age=cur;age<life;age++){const required=findRequiredFixedAsset(age,rate,v),projected=projectAssetsToAge(age,rate,v),coverage=required>0?projected/required*100:Infinity;const row={currentAgeMonths:cur,fireAgeMonths:age,requiredTotalAtRetirement:required,projectedAssetsAtRetirement:projected,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementSurplus:projected-required,coverageRate:coverage,isAchievable:projected>=required,scenarioRate:rate,baseMarket:v.baseMarket};if(!fallback||coverage>fallback.coverageRate)fallback=row;if(row.isAchievable)return row}return Object.assign(fallback||{scenarioRate:rate,baseMarket:v.baseMarket},{isAchievable:false,fireAgeMonths:null})}
 function monthAtOffset(start,offset){let [y,m]=start.split('-').map(Number);const n=(m-1)+offset;return{year:y+Math.floor(n/12),month:n%12+1}}
 function ymLabel(x){return`${x.year}-${String(x.month).padStart(2,'0')}`}
-function buildHistoricalReturns(){const d=window.__lfcSpData;if(!d||!Array.isArray(d.nomTRP)||d.nomTRP.length<2)return[];const out=[];for(let i=1;i<d.nomTRP.length;i++){const ym=monthAtOffset(d.start,i);if(ym.year<HISTORY_START_YEAR)continue;const prev=d.nomTRP[i-1],cur=d.nomTRP[i];if(Number.isFinite(prev)&&Number.isFinite(cur)&&prev>0)out.push({year:ym.year,month:ym.month,nominalReturn:cur/prev-1})}if(out.length)HISTORY_META={start:ymLabel(out[0]),end:ymLabel(out[out.length-1]),count:out.length};return out}
+function buildHistoricalReturns(market){
+  const d=market&&market.monthlyLevels?market.monthlyLevels:(market&&market.id==='sp500'?window.__lfcSpData:null);
+  if(!d||!Array.isArray(d.nomTRP)||d.nomTRP.length<2){HISTORY_META=null;return[]}
+  const out=[];
+  for(let i=1;i<d.nomTRP.length;i++){
+    const ym=monthAtOffset(d.start,i),prev=d.nomTRP[i-1],cur=d.nomTRP[i];
+    if(Number.isFinite(prev)&&Number.isFinite(cur)&&prev>0)out.push({year:ym.year,month:ym.month,nominalReturn:cur/prev-1})
+  }
+  if(out.length)HISTORY_META={start:ymLabel(out[0]),end:ymLabel(out[out.length-1]),count:out.length};
+  return out
+}
+function selectMarketHistory(key){ACTIVE_MARKET=getBaseMarket(key);HIST_RETURNS=buildHistoricalReturns(ACTIVE_MARKET);return ACTIVE_MARKET}
 function buildConservativeRequirements(v){if(!HIST_RETURNS.length)return new Map();const N=HIST_RETURNS.length,curAge=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),{adjustedAnnualPension}=getAdjustedAnnualPension(v),monthlyInfl=Math.pow(1+v.inflationRate/100,1/12)-1,real=HIST_RETURNS.map(x=>(1+x.nominalReturn)/(1+monthlyInfl)-1),plans=new Map();let next=new Float64Array(N+1);const firstValidAge=Math.max(curAge,life-N);for(let age=life-1;age>=firstValidAge;age--){const duration=life-age,maxStart=N-duration,current=new Float64Array(N+1),expense=monthlyNetExpense(age,v,adjustedAnnualPension);let worst=-1,worstStart=-1;for(let s=0;s<=maxStart;s++){const denom=1+real[s];const req=Math.max(0,(next[s+1]+expense)/denom);current[s]=req;if(req>worst){worst=req;worstStart=s}}plans.set(age,{requiredTotalAtRetirement:worst,worstStart,duration});next=current}return plans}
 function historicalWindowStats(start,duration){let factor=1;for(let i=0;i<duration;i++)factor*=1+HIST_RETURNS[start+i].nominalReturn;const cagr=Math.pow(factor,12/duration)-1;const a=HIST_RETURNS[start],b=HIST_RETURNS[start+duration-1];return{historyStart:`${a.year}-${String(a.month).padStart(2,'0')}`,historyEnd:`${b.year}-${String(b.month).padStart(2,'0')}`,historyCagr:cagr}}
-function getSp500HistoryBaseRate(){return HIST_RETURNS.length?historicalWindowStats(0,HIST_RETURNS.length).historyCagr:null}
 function getBaseRate(v){const bm=getBaseMarket(v.baseMarket);return bm?bm.nominalCagr:null}
 function getRecentWindow(duration,baseRate){if(duration===0)return{scenarioRate:baseRate,lookbackMonths:0,recentStart:null,recentEnd:HISTORY_META?HISTORY_META.end:null,usesBase:true};if(duration<0||duration>HIST_RETURNS.length)return null;const start=HIST_RETURNS.length-duration,stats=historicalWindowStats(start,duration);return{scenarioRate:stats.historyCagr,lookbackMonths:duration,recentStart:stats.historyStart,recentEnd:stats.historyEnd,usesBase:false}}
 function calculateRecentScenario(v,baseRate){const cur=toMonthAge(v.currentAge),life=toMonthAge(v.lifeAge),p=getAdjustedAnnualPension(v),lookbackMonths=life-cur,basis=getRecentWindow(lookbackMonths,baseRate);if(!basis)return{currentAgeMonths:cur,isAchievable:false,unavailable:true,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementRate:baseRate,scenarioRate:null,lookbackMonths};const rate=basis.scenarioRate;let fallback=null;for(let age=cur;age<life;age++){const required=findRequiredFixedAsset(age,baseRate,v),projected=projectAssetsToAge(age,rate,v),coverage=required>0?projected/required*100:Infinity;const row={currentAgeMonths:cur,fireAgeMonths:age,requiredTotalAtRetirement:required,projectedAssetsAtRetirement:projected,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementSurplus:projected-required,coverageRate:coverage,isAchievable:projected>=required,retirementRate:baseRate,...basis};if(!fallback||coverage>fallback.coverageRate)fallback=row;if(row.isAchievable)return row}return Object.assign(fallback||{currentAgeMonths:cur,adjustedAnnualPension:p.adjustedAnnualPension,pensionAdjustRate:p.pensionAdjustRate,pensionStartAge:p.pensionStartAge,retirementRate:baseRate,...basis},{isAchievable:false,fireAgeMonths:null})}
@@ -94,14 +105,14 @@ function renderCards(results){
   for(const [key,r] of Object.entries(results)){
     const card=document.createElement('div');card.className=`rcard ${CLS[key]}`;
     let badge='';
-    if(key==='conservative')badge='S&P 500 · 戦後最悪経路';
+    if(key==='conservative')badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · Worst Path`;
     else if(r.unavailable||r.scenarioRate==null)badge=key==='recent'?`${formatLookbackMonths(r.lookbackMonths||0)} · 履歴不足`:'履歴データ未取得';
-    else if(key==='recent')badge=`S&P 500 · ${formatLookbackMonths(r.lookbackMonths||0)} · 年率 ${formatPercentCompact(r.scenarioRate*100)}`;
+    else if(key==='recent')badge=`${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} · ${formatLookbackMonths(r.lookbackMonths||0)} · 年率 ${formatPercentCompact(r.scenarioRate*100)}`;
     else {const bm=getBaseMarket(r.baseMarket);badge=`${bm?bm.label:'Base'} · 最長期間 · 年率 ${formatPercentCompact(r.scenarioRate*100)}`}
     const fireSub=r.unavailable?'履歴データを読み込めません':r.isAchievable?formatDurationMonths(r.fireAgeMonths-r.currentAgeMonths):'想定寿命までに未達';
     let extra='';
-    if(key==='conservative'&&!r.unavailable&&r.worstStart!=null){extra=`<div class="nb"><div class="nb-lbl">Historical Stress 最悪期間</div><div class="nb-val small">${r.historyStart} → ${r.historyEnd}</div><div class="nb-sub">S&P 500 / ${Math.floor(r.duration/12)}年${r.duration%12?`${r.duration%12}ヶ月`:''} / 同期間CAGR ${formatPercentCompact(r.historyCagr*100)} / ${HISTORY_META.start}以降を全走査</div></div>`}
-    else if(key==='recent'&&!r.unavailable&&r.scenarioRate!=null){extra=`<div class="nb"><div class="nb-lbl">Recent Basis 残り人生と同期間の直近実績</div><div class="nb-val small">${r.recentStart} → ${r.recentEnd}</div><div class="nb-sub">S&P 500 / ${formatLookbackMonths(r.lookbackMonths)}のTotal Return CAGR（現在年齢→想定寿命と同じ期間）</div></div>`}
+    if(key==='conservative'&&!r.unavailable&&r.worstStart!=null){extra=`<div class="nb"><div class="nb-lbl">Historical Stress 最悪期間</div><div class="nb-val small">${r.historyStart} → ${r.historyEnd}</div><div class="nb-sub">${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} / ${Math.floor(r.duration/12)}年${r.duration%12?`${r.duration%12}ヶ月`:''} / 同期間CAGR ${formatPercentCompact(r.historyCagr*100)} / ${HISTORY_META.start}以降を全走査</div></div>`}
+    else if(key==='recent'&&!r.unavailable&&r.scenarioRate!=null){extra=`<div class="nb"><div class="nb-lbl">Recent Basis 残り人生と同期間の直近実績</div><div class="nb-val small">${r.recentStart} → ${r.recentEnd}</div><div class="nb-sub">${ACTIVE_MARKET?ACTIVE_MARKET.label:'運用指数'} / ${formatLookbackMonths(r.lookbackMonths)}のTotal Return CAGR（現在年齢→想定寿命と同じ期間）</div></div>`}
     else if(key==='base'&&!r.unavailable&&r.scenarioRate!=null){const bm=getBaseMarket(r.baseMarket);if(bm)extra=`<div class="nb"><div class="nb-lbl">Long-term Basis 長期実績</div><div class="nb-val small">${bm.label}: ${bm.start} → ${bm.end}</div><div class="nb-sub">${bm.basis} / ローカル固定データ</div></div>`}
     card.innerHTML=`<div class="rcard-head"><div><div class="rcard-name">${LABELS[key]}</div><div class="rcard-rate">${badge}</div></div></div><div class="nb"><div class="nb-lbl">FIRE Age FIRE年齢</div><div class="nb-val gold">${r.isAchievable?formatAgeWithMonths(r.fireAgeMonths):'未達'}</div><div class="nb-sub">${fireSub}</div></div><div class="csep"></div><div class="nb"><div class="nb-lbl">Required Principal 必要元本</div><div class="nb-val">${r.requiredTotalAtRetirement!=null?formatOkuMan(r.requiredTotalAtRetirement):'—'}</div><div class="nb-sub">${r.requiredTotalAtRetirement!=null?formatYen(r.requiredTotalAtRetirement):''}</div></div>${extra}<div class="nb"><div class="nb-lbl">Pension Income 年金受給額</div><div class="nb-val">${formatOkuMan(r.adjustedAnnualPension||0)}</div><div class="nb-sub">${formatPensionAdjustmentNote(r.pensionAdjustRate||1,r.pensionStartAge??PENSION_BASE_AGE)}</div></div>`;
     grid.appendChild(card)
@@ -113,23 +124,24 @@ function updateSimulation(){
   hideError();hideInfo();
   const v=getFormValues();updateSliderDisplays(v);saveState(v);
   const errors=validateInputs(v);if(errors.length){showError(errors);return}
+  ACTIVE_MARKET=selectMarketHistory(v.baseMarket);
   BASE_RATE=getBaseRate(v);
-  const sp500HistoryBaseRate=getSp500HistoryBaseRate();
+  const historyBaseRate=HIST_RETURNS.length?historicalWindowStats(0,HIST_RETURNS.length).historyCagr:null;
   const results={
-    recent:sp500HistoryBaseRate==null?makeUnavailableScenario(v):calculateRecentScenario(v,sp500HistoryBaseRate),
+    recent:historyBaseRate==null?makeUnavailableScenario(v):calculateRecentScenario(v,historyBaseRate),
     base:BASE_RATE==null?makeUnavailableScenario(v):calculateFixedScenario(BASE_RATE,v),
-    conservative:sp500HistoryBaseRate==null?makeUnavailableScenario(v):calculateConservativeScenario(v,sp500HistoryBaseRate)
+    conservative:historyBaseRate==null?makeUnavailableScenario(v):calculateConservativeScenario(v,historyBaseRate)
   },chartData={};
   if(results.recent.isAchievable)chartData.recent=generateFixedSeries(results.recent.fireAgeMonths,results.recent.requiredTotalAtRetirement,results.recent.retirementRate,v);
   if(results.base.isAchievable)chartData.base=generateFixedSeries(results.base.fireAgeMonths,results.base.requiredTotalAtRetirement,results.base.scenarioRate,v);
   if(results.conservative.isAchievable)chartData.conservative=generateHistoricalSeries(results.conservative.fireAgeMonths,results.conservative.requiredTotalAtRetirement,results.conservative.worstStart,results.conservative.duration,v);
   renderCards(results);renderChart(chartData);
-  if(!HIST_RETURNS.length)showInfo('S&P 500月次履歴データを読み込めなかったため、Recent / Conservative は計算できません。Base はローカル固定データで計算しています。');
-  else if(toMonthAge(v.lifeAge)-toMonthAge(v.currentAge)>HIST_RETURNS.length)showInfo(`S&P 500戦後履歴は${HISTORY_META.start}〜${HISTORY_META.end}（${HIST_RETURNS.length}ヶ月）です。設定した「想定寿命−現在年齢」の期間が履歴より長いため、直近ベースは計算できません。保守は計算可能なFIRE候補のみ評価します。`)
+  if(!HIST_RETURNS.length)showInfo(`${ACTIVE_MARKET.label}の検証済み月次Total Return系列を収録できていないため、Recent / Conservative は「履歴不足」です。別指数へフォールバックしません。`);
+  else if(toMonthAge(v.lifeAge)-toMonthAge(v.currentAge)>HIST_RETURNS.length)showInfo(`${ACTIVE_MARKET.label}の履歴は${HISTORY_META.start}〜${HISTORY_META.end}（${HIST_RETURNS.length}ヶ月）です。設定した「想定寿命−現在年齢」の期間が履歴より長いため、直近ベースは計算できません。保守は計算可能なFIRE候補のみ評価します。`)
 }
 function init(){
-  HIST_RETURNS=buildHistoricalReturns();
   const v=loadState();
+  selectMarketHistory(v.baseMarket);
   BASE_RATE=getBaseRate(v);
   setFormValues(v);
   for(const id of NUMBER_IDS)document.getElementById(id).addEventListener('input',updateSimulation);

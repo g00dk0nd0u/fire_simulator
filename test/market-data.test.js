@@ -5,7 +5,7 @@ function runDataFile(path){
   const c={window:{}};
   vm.createContext(c);
   vm.runInContext(fs.readFileSync(path,'utf8'),c);
-  return c.window.__lfcSpData||c.window.__localSp500Data;
+  return c.window.__localSp500Data;
 }
 
 // The Pages copy must be exactly equivalent at the data level to the pinned

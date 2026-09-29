@@ -4,12 +4,13 @@ const context={window:{},document:{addEventListener(){}},console,Float64Array,Ma
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('docs/market-data.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/app.js','utf8'),context);
-for(const id of ['sp500','acwi','nasdaq100']){
+assert.strictEqual(vm.runInContext("getBaseRate({baseMarket:'sp500'})",context),null);
+for(const id of ['acwi','nasdaq100']){
   const rate=vm.runInContext(`getBaseRate({baseMarket:'${id}'})`,context);
-  assert(Number.isFinite(rate)&&rate>-1,`${id} Base CAGR`);
+  assert(Number.isFinite(rate)&&rate>-1,`${id} published Base CAGR`);
 }
 const levels={start:'2020-01',nomTRP:[100,101,103,102,106]};
-context.window.__marketData=Object.assign({},context.window.__marketData,{test:{id:'test',label:'Test',nominalCagr:.1,monthlyLevels:levels}});
+context.window.__marketData=Object.assign({},context.window.__marketData,{test:{id:'test',label:'Test',baseRateSource:'monthly_history',nominalCagr:.1,monthlyLevels:levels}});
 vm.runInContext("selectMarketHistory('test')",context);
 const recent=vm.runInContext('getRecentWindow(2,.1)',context);
 assert.strictEqual(recent.recentStart,'2020-04');
@@ -34,7 +35,7 @@ assert.strictEqual(vm.runInContext('HISTORY_META.start',context),'1946-01');
 assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),3);
 
 // A local monthly series is the single source for Base and Recent retirement rates.
-context.window.__marketData.test={id:'test',label:'Test',historyStart:'2020-01',nominalCagr:.99,monthlyLevels:levels};
+context.window.__marketData.test={id:'test',label:'Test',baseRateSource:'monthly_history',historyStart:'2020-01',nominalCagr:.99,monthlyLevels:levels};
 vm.runInContext("selectMarketHistory('test')",context);
 const dataBase=vm.runInContext("getBaseRate({baseMarket:'test'})",context);
 const fullCagr=Math.pow(106/100,12/4)-1;
@@ -80,5 +81,11 @@ assert(!cards.children[1].innerHTML.includes('Worst Path'));
 assert.strictEqual(vm.runInContext("historyStatusLabel('history_missing')",context),'月次履歴未収録');
 assert.strictEqual(vm.runInContext("historyStatusLabel('history_too_short')",context),'履歴期間不足');
 assert.strictEqual(vm.runInContext("historyStatusLabel('invalid_history')",context),'月次履歴エラー');
+
+// Broken monthly-history data must never fall back to its published-looking nominal value.
+context.window.__marketData.broken={id:'broken',label:'Broken',baseRateSource:'monthly_history',nominalCagr:.99,monthlyLevels:{start:'2020-01',nomTRP:[100,0,102]}};
+vm.runInContext("selectMarketHistory('broken')",context);
+assert.strictEqual(vm.runInContext("getBaseRate({baseMarket:'broken'})",context),null);
+assert(Number.isFinite(vm.runInContext("getBaseRate({baseMarket:'acwi'})",context)));
 
 console.log('market-data tests passed');

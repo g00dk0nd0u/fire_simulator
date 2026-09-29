@@ -8,6 +8,7 @@
 window.__marketData = Object.freeze({
   sp500: Object.freeze({
     id: 'sp500',
+    baseRateSource: 'monthly_history',
     monthlyLevels: null,
     historyStart: '1946-01',
     label: 'S&P 500',
@@ -24,6 +25,7 @@ window.__marketData = Object.freeze({
   }),
   acwi: Object.freeze({
     id: 'acwi',
+    baseRateSource: 'published_cagr',
     monthlyLevels: null,
     historyStart: '1987-12',
     label: 'MSCI ACWI',
@@ -40,6 +42,7 @@ window.__marketData = Object.freeze({
   }),
   nasdaq100: Object.freeze({
     id: 'nasdaq100',
+    baseRateSource: 'published_cagr',
     monthlyLevels: null,
     historyStart: '1985-01',
     label: 'NASDAQ-100',

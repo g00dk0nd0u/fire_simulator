@@ -82,7 +82,7 @@ function calculateFixedScenario(rate,v){const cur=toMonthAge(v.currentAge),life=
 function monthAtOffset(start,offset){let [y,m]=start.split('-').map(Number);const n=(m-1)+offset;return{year:y+Math.floor(n/12),month:n%12+1}}
 function ymLabel(x){return`${x.year}-${String(x.month).padStart(2,'0')}`}
 function buildHistoricalReturns(market){
-  const d=market&&market.monthlyLevels?market.monthlyLevels:(market&&market.id==='sp500'?window.__lfcSpData:null);
+  const d=market&&market.monthlyLevels?market.monthlyLevels:null;
   if(!d||typeof d.start!=='string'||!Array.isArray(d.nomTRP)||d.nomTRP.length<2){HISTORY_META=null;HISTORY_STATUS='history_missing';return[]}
   const firstMonth=market.historyStart||(market.id==='sp500'?SP500_HISTORY_START:d.start),out=[];
   for(let i=1;i<d.nomTRP.length;i++){

@@ -8,7 +8,7 @@ window.__marketData = Object.freeze({
   sp500: Object.freeze({
     id: 'sp500',
     baseRateSource: 'monthly_history',
-    monthlyLevels: window.__lfcSpData || null,
+    monthlyLevels: window.__localSp500Data || null,
     historyStart: '1946-01',
     label: 'S&P 500',
     symbol: 'nomTRP',

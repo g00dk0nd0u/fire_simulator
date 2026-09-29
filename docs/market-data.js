@@ -1,15 +1,14 @@
 'use strict';
 
-// Hard-copied Base assumptions. These values are intentionally local so Base
-// calculations do not depend on a live market-data request.
-// Rates are nominal long-term compound/gross/total-return CAGRs over the
-// longest published history used for each benchmark; app.js converts them to
-// real returns using the user's inflation input.
+// Market assumptions and histories are local to the repository at runtime.
+// S&P 500 Base/Recent/Conservative use the pinned local monthly Total Return
+// series; ACWI and NASDAQ-100 currently use published since-inception CAGRs
+// for Base only because redistributable monthly histories are not bundled.
 window.__marketData = Object.freeze({
   sp500: Object.freeze({
     id: 'sp500',
     baseRateSource: 'monthly_history',
-    monthlyLevels: null,
+    monthlyLevels: window.__lfcSpData || null,
     historyStart: '1946-01',
     label: 'S&P 500',
     symbol: 'nomTRP',
@@ -19,9 +18,9 @@ window.__marketData = Object.freeze({
     start: '1946-01',
     end: '2026-08',
     basis: '最長期間 Total Return CAGR',
-    sourceLabel: 'Pinned S&P 500 total return history',
-    sourceUrl: 'https://github.com/GaMa96/lfc-sp500-data',
-    note: '1946年開始から2026年8月までの配当再投資込み長期年率'
+    sourceLabel: 'Pinned local S&P 500 total return history',
+    sourceUrl: 'https://github.com/GaMa96/lfc-sp500-data/tree/ac66267d99aaa0f88c41f93acabc639a9a4dd908',
+    note: '固定commit由来の月次Total Return系列をローカル固定し、1946年1月以降を使用'
   }),
   acwi: Object.freeze({
     id: 'acwi',

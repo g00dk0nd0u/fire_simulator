@@ -6,9 +6,11 @@
 
 | 指数 | 実装 | 期間 | 種類 / 通貨 | 出典 |
 |---|---|---:|---|---|
-| S&P 500 | 月次履歴（現在は固定CDN参照） | 1946-01〜2026-08 | 配当再投資込み名目Total Return / USD | [GaMa96/lfc-sp500-data, commit `ac66267d…`](https://github.com/GaMa96/lfc-sp500-data/tree/ac66267d99aaa0f88c41f93acabc639a9a4dd908) |
+| S&P 500 | ローカル固定の月次履歴 | 1946-01〜2026-08 | 配当再投資込み名目Total Return / USD | [GaMa96/lfc-sp500-data, commit `ac66267d…`](https://github.com/GaMa96/lfc-sp500-data/tree/ac66267d99aaa0f88c41f93acabc639a9a4dd908) |
 | MSCI ACWI | 公表設定来CAGRのみ | 1987-12-31〜2026-04-30 | Gross Return / USD | [MSCI ACWI factsheet](https://www.msci.com/documents/10199/255599/msci-acwi.pdf) |
 | NASDAQ-100 | 公表設定来CAGRのみ | 1985-01-31〜2024-12-31 | Compound Return / USD | [Nasdaq 40周年資料](https://www.nasdaq.com/articles/nasdaq-100-indexr-celebrates-40-years-innovation) |
+
+S&P 500の元系列は固定commitの `data/sp500.js` をリポジトリに保存し、同じ内容を `docs/sp500-data.js` からGitHub Pages実行時にローカル読込します。raw系列は1871-01〜2026-08ですが、シミュレータでは従来互換のため1946-01以降を使用します。市場データについて実行時の外部依存はありません（Chart.jsやGoogle Fontsなどの一般ライブラリは外部配信を利用します）。
 
 S&P 500はBase / Recent / Conservativeを利用できます。MSCI ACWIとNASDAQ-100はBaseのみ利用でき、Recent / Conservativeは「月次履歴未収録」と表示します。候補となる第三者月次データについて系列定義と公開リポジトリへの再配布許諾を確認できなかったため、ETF価格、生成・補間値を含めて収録していません。
 
@@ -24,4 +26,4 @@ S&P 500はBase / Recent / Conservativeを利用できます。MSCI ACWIとNASDAQ
 
 ## 使い方
 
-`docs/index.html` をブラウザで開きます。ビルドは不要です。Chart.jsおよび現時点のS&P 500月次系列はCDN参照です。
+`docs/index.html` をブラウザで開きます。ビルドは不要です。

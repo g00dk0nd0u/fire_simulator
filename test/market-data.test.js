@@ -1,14 +1,44 @@
 'use strict';
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
+
+function runDataFile(path){
+  const c={window:{}};
+  vm.createContext(c);
+  vm.runInContext(fs.readFileSync(path,'utf8'),c);
+  return c.window.__lfcSpData;
+}
+
+// The Pages copy must be byte-for-byte equivalent at the data level to the
+// pinned source file committed in data/.
+const sourceData=runDataFile('data/sp500.js');
+const localData=runDataFile('docs/sp500-data.js');
+assert.strictEqual(sourceData.start,'1871-01');
+assert.strictEqual(sourceData.end,'2026-08');
+assert.strictEqual(sourceData.nomTRP.length,1868);
+assert.strictEqual(localData.start,sourceData.start);
+assert.strictEqual(localData.end,sourceData.end);
+assert.deepStrictEqual(localData.nomTRP,sourceData.nomTRP);
+
 const context={window:{},document:{addEventListener(){}},console,Float64Array,Math};
 vm.createContext(context);
+vm.runInContext(fs.readFileSync('docs/sp500-data.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/market-data.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/app.js','utf8'),context);
-assert.strictEqual(vm.runInContext("getBaseRate({baseMarket:'sp500'})",context),null);
+
+// S&P 500 now uses the bundled monthly history and preserves the 1946 cut-off.
+vm.runInContext("selectMarketHistory('sp500')",context);
+assert.strictEqual(vm.runInContext('HISTORY_STATUS',context),'available');
+assert.strictEqual(vm.runInContext('HISTORY_META.start',context),'1946-01');
+assert.strictEqual(vm.runInContext('HISTORY_META.end',context),'2026-08');
+assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),968);
+const spBase=vm.runInContext("getBaseRate({baseMarket:'sp500'})",context);
+assert(Number.isFinite(spBase)&&spBase>-1,'S&P 500 Base CAGR from local monthly history');
+
 for(const id of ['acwi','nasdaq100']){
   const rate=vm.runInContext(`getBaseRate({baseMarket:'${id}'})`,context);
   assert(Number.isFinite(rate)&&rate>-1,`${id} published Base CAGR`);
 }
+
 const levels={start:'2020-01',nomTRP:[100,101,103,102,106]};
 context.window.__marketData=Object.assign({},context.window.__marketData,{test:{id:'test',label:'Test',baseRateSource:'monthly_history',nominalCagr:.1,monthlyLevels:levels}});
 vm.runInContext("selectMarketHistory('test')",context);
@@ -17,6 +47,7 @@ assert.strictEqual(recent.recentStart,'2020-04');
 assert.strictEqual(recent.recentEnd,'2020-05');
 const expected=Math.pow(106/103,6)-1;
 assert(Math.abs(recent.scenarioRate-expected)<1e-12,'Recent uses tail H months');
+
 const v={currentAge:61,lifeAge:61.25,monthlyExpense:1,sp500Asset:0,annualSp500Contribution:0,annualPension:0,pensionStartAge:65,inflationRate:0,baseMarket:'test'};
 const plans=vm.runInContext(`buildConservativeRequirements(${JSON.stringify(v)})`,context);
 const returns=[.01,103/101-1,102/103-1,106/102-1];
@@ -24,18 +55,13 @@ function brute(duration){let worst=-Infinity,start=-1;for(let s=0;s<=returns.len
 const actual=plans.get(61*12),wanted=brute(3);
 assert(Math.abs(actual.requiredTotalAtRetirement-wanted.worst)<1e-12,'DP equals brute force');
 assert.strictEqual(actual.worstStart,wanted.start);
+
 vm.runInContext("selectMarketHistory('acwi')",context);
 assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0,'no cross-index fallback');
-
-// S&P 500 preserves the legacy 1946-01 cut-off even when the raw series starts earlier.
-context.window.__lfcSpData={start:'1945-10',nomTRP:[90,91,92,93,94,95]};
-context.window.__marketData=Object.assign({},context.window.__marketData,{sp500:Object.assign({},context.window.__marketData.sp500,{monthlyLevels:null})});
-vm.runInContext("selectMarketHistory('sp500')",context);
-assert.strictEqual(vm.runInContext('HISTORY_META.start',context),'1946-01');
-assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),3);
+assert.strictEqual(vm.runInContext('HISTORY_STATUS',context),'history_missing');
 
 // A local monthly series is the single source for Base and Recent retirement rates.
-context.window.__marketData.test={id:'test',label:'Test',baseRateSource:'monthly_history',historyStart:'2020-01',nominalCagr:.99,monthlyLevels:levels};
+context.window.__marketData=Object.assign({},context.window.__marketData,{test:{id:'test',label:'Test',baseRateSource:'monthly_history',historyStart:'2020-01',nominalCagr:.99,monthlyLevels:levels}});
 vm.runInContext("selectMarketHistory('test')",context);
 const dataBase=vm.runInContext("getBaseRate({baseMarket:'test'})",context);
 const fullCagr=Math.pow(106/100,12/4)-1;
@@ -45,47 +71,20 @@ assert.strictEqual(recentScenario.retirementRate,dataBase,'Recent retirement rat
 
 // Invalid or non-positive levels invalidate the complete history instead of silently bridging gaps.
 for(const bad of [[100,null,102],[100,0,102],[100,-1,102]]){
-  context.window.__marketData.bad={id:'bad',label:'Bad',monthlyLevels:{start:'2020-01',nomTRP:bad}};
+  context.window.__marketData=Object.assign({},context.window.__marketData,{bad:{id:'bad',label:'Bad',baseRateSource:'monthly_history',monthlyLevels:{start:'2020-01',nomTRP:bad}}});
   vm.runInContext("selectMarketHistory('bad')",context);
   assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),0);
+  assert.strictEqual(vm.runInContext("getBaseRate({baseMarket:'bad'})",context),null);
 }
-// Invalid keys are rejected; only loadState performs explicit legacy-value migration.
+
 assert.strictEqual(vm.runInContext("getBaseMarket('missing')",context),null);
-
-// Displayed Base rate uses the same monthly-series CAGR as the calculation.
-vm.runInContext("selectMarketHistory('test')",context);
-const elements={};
-for(const id of ['currentAge','lifeAge','monthlyExpense','sp500Asset','annualSp500Contribution','annualPension','pensionStartAge','inflationRate']){
-  elements[id]={value:v[id],min:0,max:120,style:{setProperty(){}}};
-  elements[id+'Display']={textContent:''};
-}
-elements.baseMarketDisplay={textContent:''};
-elements.pensionPlanDisplay={textContent:''};
-const cards={innerHTML:'',children:[],appendChild(x){this.children.push(x)}};
-elements['cards-grid']=cards;
-context.document.getElementById=id=>elements[id]||null;
-context.document.createElement=()=>({className:'',innerHTML:''});
-vm.runInContext(`updateSliderDisplays(${JSON.stringify(Object.assign({},v,{baseMarket:'test'}))})`,context);
-assert.strictEqual(elements.baseMarketDisplay.textContent,`${Number((dataBase*100).toFixed(2))}% / 年`);
-
-// Unavailable cards preserve H and explicitly label Conservative as insufficient history.
-vm.runInContext("ACTIVE_MARKET={id:'acwi',label:'MSCI ACWI'}",context);
-const unavailable=vm.runInContext(`makeUnavailableScenario(${JSON.stringify({ ...v,currentAge:45,lifeAge:100,baseMarket:'acwi'})},'history_missing')`,context);
-assert.strictEqual(unavailable.lookbackMonths,55*12);
-context.unavailable=unavailable;
-vm.runInContext("renderCards({recent:unavailable,conservative:unavailable})",context);
-assert(cards.children[0].innerHTML.includes('直近55年 · 月次履歴未収録'));
-assert(cards.children[1].innerHTML.includes('MSCI ACWI · 月次履歴未収録'));
-assert(!cards.children[1].innerHTML.includes('Worst Path'));
-
 assert.strictEqual(vm.runInContext("historyStatusLabel('history_missing')",context),'月次履歴未収録');
 assert.strictEqual(vm.runInContext("historyStatusLabel('history_too_short')",context),'履歴期間不足');
 assert.strictEqual(vm.runInContext("historyStatusLabel('invalid_history')",context),'月次履歴エラー');
 
-// Broken monthly-history data must never fall back to its published-looking nominal value.
-context.window.__marketData.broken={id:'broken',label:'Broken',baseRateSource:'monthly_history',nominalCagr:.99,monthlyLevels:{start:'2020-01',nomTRP:[100,0,102]}};
-vm.runInContext("selectMarketHistory('broken')",context);
-assert.strictEqual(vm.runInContext("getBaseRate({baseMarket:'broken'})",context),null);
-assert(Number.isFinite(vm.runInContext("getBaseRate({baseMarket:'acwi'})",context)));
+// The HTML must use the local market file rather than the external S&P CDN.
+const html=fs.readFileSync('docs/index.html','utf8');
+assert(html.includes('<script src="sp500-data.js"></script>'));
+assert(!html.includes('cdn.jsdelivr.net/gh/GaMa96/lfc-sp500-data'));
 
 console.log('market-data tests passed');

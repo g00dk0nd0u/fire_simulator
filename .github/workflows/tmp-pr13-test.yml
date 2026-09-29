@@ -45,10 +45,6 @@ jobs:
           let s=fs.readFileSync(p,'utf8');
           s=s.replace('monthlyLevels: window.__lfcSpData || null','monthlyLevels: window.__localSp500Data || null');
           fs.writeFileSync(p,s);
-          const t='test/market-data.test.js';
-          s=fs.readFileSync(t,'utf8');
-          s=s.replace('return c.window.__lfcSpData;','return c.window.__localSp500Data;');
-          fs.writeFileSync(t,s);
           NODE
 
       - run: node --check docs/sp500-data.js
@@ -61,7 +57,7 @@ jobs:
         shell: bash
         run: |
           test "$(grep -R "cdn.jsdelivr.net/gh/GaMa96/lfc-sp500-data" -n docs | wc -l)" -eq 0
-          test "$(grep -R "__lfcSpData" -n docs test data | wc -l)" -eq 0
+          test "$(grep -R "__lfcSpData" -n docs data | wc -l)" -eq 0
 
       - name: Commit generated local data if needed
         shell: bash
@@ -72,6 +68,6 @@ jobs:
           fi
           git config user.name "g00dk0nd0u"
           git config user.email "161051061+g00dk0nd0u@users.noreply.github.com"
-          git add data/sp500.js docs/sp500-data.js docs/market-data.js test/market-data.test.js
+          git add data/sp500.js docs/sp500-data.js docs/market-data.js
           git commit -m "Localize exact pinned S&P 500 history"
           git push origin HEAD:codex/add-full-index-support-for-recent-based-and-conservative

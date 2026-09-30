@@ -3,9 +3,17 @@
 const MARKET_HISTORY_DB='fire-simulator-market-history';
 const MARKET_HISTORY_STORE='histories';
 const MARKET_HISTORY_KEYS={acwi:'market-history-acwi',nasdaq100:'market-history-nasdaq100'};
+const MARKET_HISTORY_MAX_BYTES=10*1024*1024;
+const MARKET_HISTORY_MAX_ROWS=100000;
+
+function historyMonthAtOffset(start,offset){const [year,month]=start.split('-').map(Number),n=month-1+offset;return`${year+Math.floor(n/12)}-${String(n%12+1).padStart(2,'0')}`}
 
 function parseMarketHistoryCsv(text){
-  const rows=String(text).replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim()!=='');
+  text=String(text);
+  if(text.length>MARKET_HISTORY_MAX_BYTES)throw new Error('CSVは10 MB以下にしてください。');
+  const allRows=text.replace(/^\uFEFF/,'').split(/\r?\n/);
+  const rows=allRows.filter(x=>x.trim()!=='');
+  if(rows.length>MARKET_HISTORY_MAX_ROWS+1)throw new Error('CSVは100,000データ行以下にしてください。');
   if(rows.length<3)throw new Error('CSVにはヘッダーと2件以上のデータが必要です。');
   const header=rows[0].split(',').map(x=>x.trim().toLowerCase());
   const dateIndex=header.indexOf('date'),valueIndex=header.indexOf('value');
@@ -34,7 +42,7 @@ function parseMarketHistoryCsv(text){
   }
   if(months.length<2)throw new Error('月次系列は最低2ヶ月以上必要です。');
   for(let i=1;i<months.length;i++){
-    const expected=ymLabel(monthAtOffset(months[i-1].month,1));
+    const expected=historyMonthAtOffset(months[i-1].month,1);
     if(months[i].month!==expected)throw new Error(`${expected}の月次データが抜けています。`);
   }
   return{start:months[0].month,end:months[months.length-1].month,nomTRP:months.map(x=>x.value)};

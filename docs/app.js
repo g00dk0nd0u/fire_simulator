@@ -14,14 +14,20 @@ const SP500_HISTORY_START='1946-01';
 let chartInst=null,HIST_RETURNS=[],HISTORY_META=null,HISTORY_STATUS='history_missing',BASE_RATE=null;
 let ACTIVE_MARKET=null;
 const USER_MARKET_HISTORIES={};
+const SESSION_ONLY_MARKETS={};
+const USER_RETURN_TYPES=['Total Return','Gross Return','Net Return','Price Return'];
 
 function getBaseMarketData(){return window.__marketData||{}}
 function getBaseMarket(key){return getBaseMarketData()[key]||null}
-function isValidUserHistory(user){return!!(user&&user.levels&&/^\d{4}-\d{2}$/.test(user.levels.start)&&Array.isArray(user.levels.nomTRP)&&user.levels.nomTRP.length>=2&&user.levels.nomTRP.every(x=>Number.isFinite(x)&&x>0))}
+function isValidUserHistory(user,key){
+  const levels=user&&user.levels,metadata=user&&user.metadata,market=getBaseMarket(key);
+  return!!(market&&levels&&/^\d{4}-(?:0[1-9]|1[0-2])$/.test(levels.start)&&/^\d{4}-(?:0[1-9]|1[0-2])$/.test(levels.end)&&Array.isArray(levels.nomTRP)&&levels.nomTRP.length>=2&&levels.nomTRP.every(x=>Number.isFinite(x)&&x>0)&&monthLabelAtOffset(levels.start,levels.nomTRP.length-1)===levels.end&&metadata&&USER_RETURN_TYPES.includes(metadata.returnType)&&typeof metadata.currency==='string'&&metadata.currency.trim()!==''&&metadata.indexName===market.label)
+}
+function monthLabelAtOffset(start,offset){const x=monthAtOffset(start,offset);return ymLabel(x)}
 function getEffectiveMarket(key){
   const market=getBaseMarket(key),user=USER_MARKET_HISTORIES[key];
   if(!market)return null;
-  if(!isValidUserHistory(user))return market;
+  if(!isValidUserHistory(user,key))return market;
   return Object.assign({},market,{baseRateSource:'monthly_history',monthlyLevels:{start:user.levels.start,nomTRP:user.levels.nomTRP.slice()},historyStart:user.levels.start,userHistory:true,importMetadata:user.metadata});
 }
 function getDefaultValues(){return{currentAge:45,lifeAge:100,monthlyExpense:280000,sp500Asset:18000000,annualSp500Contribution:1200000,annualPension:1100000,pensionStartAge:75,inflationRate:1.25,baseMarket:'sp500'}}
@@ -157,15 +163,17 @@ function formatAvailableMonths(m){const y=Math.floor(m/12),mo=m%12;return`${y}�
 function updateHistoryControls(key){
   const controls=document.getElementById('marketHistoryControls'),summary=document.getElementById('marketHistorySummary');if(!controls||!summary)return;
   controls.hidden=key==='sp500';const market=getBaseMarket(key),user=USER_MARKET_HISTORIES[key];document.getElementById('deleteHistory').hidden=!user;
-  summary.textContent=key==='sp500'?'S&P 500はbundled月次履歴を使用します。':user?`${market.label}: ${user.levels.start}〜${user.levels.end} / ${user.levels.nomTRP.length}ヶ月`:`${market.label}の月次履歴は未収録です。Recent / Conservativeには月次Total Return履歴を読み込んでください。`;
+  summary.textContent=key==='sp500'?'S&P 500はbundled月次履歴を使用します。':user?formatImportedHistorySummary(key,user):`${market.label}の月次履歴は未収録です。Recent / Conservativeには月次Total Return履歴を読み込んでください。`;
 }
-async function restoreUserHistories(){for(const key of Object.keys(MARKET_HISTORY_KEYS)){try{const value=await loadMarketHistory(key);if(isValidUserHistory(value))USER_MARKET_HISTORIES[key]=value}catch(e){console.warn(e.message)}}}
+function formatImportedHistorySummary(key,user){const price=user.metadata.returnType==='Price Return'?'\nPrice Return（配当なし）の履歴を使用中です。Total / Gross / Net Returnベースの結果とは一致しません。':'';const session=SESSION_ONLY_MARKETS[key]?'\nブラウザ保存に失敗したため、このタブ内のみ有効です。':'';return`${getBaseMarket(key).label}\n${user.levels.start}〜${user.levels.end}\n${user.metadata.returnType} / ${user.metadata.currency}\n利用可能リターン履歴: ${user.levels.nomTRP.length-1}ヶ月\nCSV観測値: ${user.levels.nomTRP.length}点${price}${session}`}
+async function restoreUserHistories(){for(const key of Object.keys(MARKET_HISTORY_KEYS)){try{const value=await loadMarketHistory(key);if(isValidUserHistory(value,key))USER_MARKET_HISTORIES[key]=value}catch(e){console.warn(e.message)}}}
+async function importMarketHistoryRecord(key,record){if(!isValidUserHistory(record,key))throw new Error('インポートmetadataまたは期間が不正です。');USER_MARKET_HISTORIES[key]=record;delete SESSION_ONLY_MARKETS[key];try{await saveMarketHistory(key,record);return{persisted:true}}catch(e){SESSION_ONLY_MARKETS[key]=true;return{persisted:false,error:e.message}}}
 function setupHistoryImport(){
   const dialog=document.getElementById('historyDialog'),type=document.getElementById('importReturnType');
   document.getElementById('importHistory').addEventListener('click',()=>{const key=document.getElementById('baseMarket').value,market=getBaseMarket(key);document.getElementById('importIndexName').value=market.label;document.getElementById('importError').textContent='';dialog.showModal()});
   type.addEventListener('change',()=>{document.getElementById('returnTypeWarning').textContent=type.value==='Price Return'?'配当を含まないため、現在のTotal Return前提とは一致しません。Recent / ConservativeにはTotal / Gross / Net Returnを推奨します。':''});
-  document.getElementById('confirmImport').addEventListener('click',async()=>{const error=document.getElementById('importError');try{const file=document.getElementById('historyFile').files[0];if(!file)throw new Error('CSVファイルを選択してください。');const key=document.getElementById('baseMarket').value,levels=parseMarketHistoryCsv(await file.text()),record={levels,metadata:{indexName:getBaseMarket(key).label,returnType:type.value,currency:document.getElementById('importCurrency').value.trim()}};if(!record.metadata.currency)throw new Error('Currencyを入力してください。');await saveMarketHistory(key,record);USER_MARKET_HISTORIES[key]=record;dialog.close();updateSimulation()}catch(e){error.textContent=e.message}});
-  document.getElementById('deleteHistory').addEventListener('click',async()=>{const key=document.getElementById('baseMarket').value;try{await deleteMarketHistory(key);delete USER_MARKET_HISTORIES[key];updateSimulation()}catch(e){showError([e.message])}});
+  document.getElementById('confirmImport').addEventListener('click',async()=>{const error=document.getElementById('importError');try{const file=document.getElementById('historyFile').files[0];if(!file)throw new Error('CSVファイルを選択してください。');if(file.size>MARKET_HISTORY_MAX_BYTES)throw new Error('CSVは10 MB以下にしてください。');const key=document.getElementById('baseMarket').value,levels=parseMarketHistoryCsv(await file.text()),record={levels,metadata:{indexName:getBaseMarket(key).label,returnType:type.value,currency:document.getElementById('importCurrency').value.trim()}};await importMarketHistoryRecord(key,record);dialog.close();updateSimulation()}catch(e){error.textContent=e.message}});
+  document.getElementById('deleteHistory').addEventListener('click',async()=>{const key=document.getElementById('baseMarket').value;try{await deleteMarketHistory(key)}catch(e){console.warn(e.message)}delete USER_MARKET_HISTORIES[key];delete SESSION_ONLY_MARKETS[key];updateSimulation()});
 }
 async function init(){
   await restoreUserHistories();setupHistoryImport();

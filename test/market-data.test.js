@@ -2,6 +2,28 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 (async()=>{
 
+function createIndexedDbStub(){
+  const databases=new Map();
+  return{fail:false,opens:0,open(name){
+    const request={};this.opens++;
+    queueMicrotask(()=>{
+      if(this.fail){request.error=new Error('storage failure');if(request.onerror)request.onerror();return}
+      const fresh=!databases.has(name);if(fresh)databases.set(name,new Map());const data=databases.get(name);
+      request.result={
+        createObjectStore(){},close(){},
+        transaction(){return{objectStore(){return{
+          get(key){return operation(()=>data.get(key))},
+          put(value,key){return operation(()=>data.set(key,value))},
+          delete(key){return operation(()=>data.delete(key))}
+        }}}}
+      };
+      if(fresh&&request.onupgradeneeded)request.onupgradeneeded();if(request.onsuccess)request.onsuccess()
+    });
+    return request
+  }};
+  function operation(fn){const request={};queueMicrotask(()=>{try{request.result=fn();if(request.onsuccess)request.onsuccess()}catch(e){request.error=e;if(request.onerror)request.onerror()}});return request}
+}
+
 function runDataFile(path){
   const c={window:{}};
   vm.createContext(c);
@@ -20,7 +42,8 @@ assert.strictEqual(localData.start,sourceData.start);
 assert.strictEqual(localData.end,sourceData.end);
 assert.strictEqual(JSON.stringify(localData.nomTRP),JSON.stringify(sourceData.nomTRP));
 
-const context={window:{},document:{addEventListener(){}},console,Float64Array,Math};
+const indexedDB=createIndexedDbStub();
+const context={window:{},document:{addEventListener(){}},console,Float64Array,Math,indexedDB};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('docs/sp500-data.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/market-data.js','utf8'),context);
@@ -36,6 +59,14 @@ assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),968);
 const spBase=vm.runInContext("getBaseRate({baseMarket:'sp500'})",context);
 assert(Number.isFinite(spBase)&&spBase>-1,'S&P 500 Base CAGR from local monthly history');
 assert(Math.abs(spBase-0.11373172536844711)<1e-14,'S&P 500 numeric regression');
+const spRegression={currentAge:45,lifeAge:100,monthlyExpense:280000,sp500Asset:18000000,annualSp500Contribution:1200000,annualPension:1100000,pensionStartAge:75,inflationRate:1.25,baseMarket:'sp500'};
+const spRecent=vm.runInContext(`calculateRecentScenario(${JSON.stringify(spRegression)},${spBase})`,context);
+assert.strictEqual(spRecent.fireAgeMonths,595,'S&P 500 Recent FIRE age regression');
+assert(Math.abs(spRecent.scenarioRate-0.11311499848772799)<1e-14,'S&P 500 Recent rate regression');
+const spConservative=vm.runInContext(`calculateConservativeScenario(${JSON.stringify(spRegression)},${spBase})`,context);
+assert.strictEqual(spConservative.fireAgeMonths,638,'S&P 500 Conservative FIRE age regression');
+assert.strictEqual(spConservative.worstStart,276,'S&P 500 Conservative path regression');
+assert(Math.abs(spConservative.requiredTotalAtRetirement-53838897.260373004)<1e-6,'S&P 500 Conservative principal regression');
 
 for(const id of ['acwi','nasdaq100']){
   const rate=vm.runInContext(`getBaseRate({baseMarket:'${id}'})`,context);
@@ -119,16 +150,60 @@ const tooShort=vm.runInContext(`calculateRecentScenario(${JSON.stringify(Object.
 assert.strictEqual(tooShort.historyStatus,'history_too_short');
 assert.strictEqual(tooShort.requiredMonths,12);
 assert.strictEqual(tooShort.availableMonths,4);
+assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),4,'5 levels produce 4 usable return months');
 
-// IndexedDB-facing restoration and deletion are independently keyed.
-context.saved={acwi:imported,nasdaq100:{levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{indexName:'NASDAQ-100'}}};
-vm.runInContext("loadMarketHistory=async key=>saved[key]; deleteMarketHistory=async key=>{delete saved[key]}",context);
+// Stored history requires consistent periods and trusted metadata.
+context.corruptEnd={...imported,levels:{...imported.levels,end:'2020-06'}};
+context.badType={...imported,metadata:{...imported.metadata,returnType:'Unknown Return'}};
+context.badCurrency={...imported,metadata:{...imported.metadata,currency:''}};
+context.badName={...imported,metadata:{...imported.metadata,indexName:'attacker supplied'}};
+assert.strictEqual(vm.runInContext("isValidUserHistory(corruptEnd,'acwi')",context),false);
+assert.strictEqual(vm.runInContext("isValidUserHistory(badType,'acwi')",context),false);
+assert.strictEqual(vm.runInContext("isValidUserHistory(badCurrency,'acwi')",context),false);
+assert.strictEqual(vm.runInContext("isValidUserHistory(badName,'acwi')",context),false);
+
+// Exercise the production IndexedDB adapter: put/get/delete and independent keys.
+const nasdaqImported={levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{indexName:'NASDAQ-100',returnType:'Gross Return',currency:'USD'}};
+context.nasdaqImported=nasdaqImported;
+await vm.runInContext("saveMarketHistory('acwi',imported)",context);
+await vm.runInContext("saveMarketHistory('nasdaq100',nasdaqImported)",context);
+assert.strictEqual((await vm.runInContext("loadMarketHistory('acwi')",context)).levels.nomTRP.length,5);
+assert.strictEqual((await vm.runInContext("loadMarketHistory('nasdaq100')",context)).levels.nomTRP.length,2);
+assert(indexedDB.opens>=4,'database is reopened for adapter operations');
 vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete USER_MARKET_HISTORIES.nasdaq100",context);
 await vm.runInContext('restoreUserHistories()',context);
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5,'ACWI restoration');
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.nasdaq100.levels.nomTRP.length',context),2,'NASDAQ restoration');
 await vm.runInContext("deleteMarketHistory('acwi')",context);
-assert.strictEqual(context.saved.acwi,undefined,'delete imported history');
+assert.strictEqual(await vm.runInContext("loadMarketHistory('acwi')",context),undefined,'delete imported history');
+
+// Corrupted persisted data is rejected during restore.
+await vm.runInContext("saveMarketHistory('acwi',corruptEnd); delete USER_MARKET_HISTORIES.acwi",context);
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi',context),undefined);
+
+// A storage failure keeps a valid import available for the current tab.
+indexedDB.fail=true;
+const fallback=await vm.runInContext("importMarketHistoryRecord('acwi',imported)",context);
+assert.strictEqual(fallback.persisted,false);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5);
+assert.strictEqual(vm.runInContext('SESSION_ONLY_MARKETS.acwi',context),true);
+indexedDB.fail=false;
+
+// Price Return and session-only warnings are derived from restored metadata.
+context.priceImported={...imported,metadata:{...imported.metadata,returnType:'Price Return'}};
+await vm.runInContext("saveMarketHistory('acwi',priceImported); delete USER_MARKET_HISTORIES.acwi; delete SESSION_ONLY_MARKETS.acwi",context);
+await vm.runInContext('restoreUserHistories()',context);
+let summary=vm.runInContext("formatImportedHistorySummary('acwi',USER_MARKET_HISTORIES.acwi)",context);
+assert(summary.includes('利用可能リターン履歴: 4ヶ月'));
+assert(summary.includes('CSV観測値: 5点'));
+assert(summary.includes('Price Return（配当なし）'));
+vm.runInContext('SESSION_ONLY_MARKETS.acwi=true',context);
+summary=vm.runInContext("formatImportedHistorySummary('acwi',USER_MARKET_HISTORIES.acwi)",context);
+assert(summary.includes('このタブ内のみ有効'));
+
+assert.throws(()=>parse('x'.repeat(10*1024*1024+1)),/10 MB/);
+assert.throws(()=>parse('date,value\n'+'2020-01,1\n'.repeat(100001)),/100,000/);
 
 console.log('market-data tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1});

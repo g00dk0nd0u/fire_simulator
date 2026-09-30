@@ -12,7 +12,9 @@
 
 S&P 500の元系列は固定commitの `data/sp500.js` をリポジトリに保存し、同じ内容を `docs/sp500-data.js` からGitHub Pages実行時にローカル読込します。raw系列は1871-01〜2026-08（1868月次値）ですが、シミュレータでは従来互換のため1946-01以降を使用します。市場データについて実行時の外部依存はありません（Chart.jsやGoogle Fontsなどの一般ライブラリは外部配信を利用します）。
 
-S&P 500はBase / Recent / Conservativeを利用できます。MSCI ACWIとNASDAQ-100はBaseのみ利用でき、Recent / Conservativeは「月次履歴未収録」と表示します。候補となる第三者月次データについて系列定義と公開リポジトリへの再配布許諾を確認できなかったため、ETF価格、生成・補間値を含めて収録していません。
+S&P 500はbundled historyでBase / Recent / Conservativeを利用できます。MSCI ACWIとNASDAQ-100は標準ではBaseのみですが、ユーザーが所有する月次Index Level CSVをローカルで読み込むと3シナリオを利用できます。読み込んだデータは外部送信せず、指数別キーでブラウザのIndexedDBだけに保存します。著作権・ライセンスが不明なproprietary market dataはリポジトリに保存しません。
+
+CSVは `date,value` ヘッダーを持ち、日付は `YYYY-MM` または `YYYY-MM-DD`、valueは正の有限なTotal / Gross / Net Return等のIndex Levelとします。日次系列は同一月の最終日を月末値として変換します。日付順、重複、月抜け、値、2ヶ月以上であることを検証し、不正な系列は保存・計算しません。Price Returnも読み込めますが、配当を含まないため本ツールのTotal Return前提とは一致しません。
 
 ## 計算定義
 

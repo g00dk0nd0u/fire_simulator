@@ -1,5 +1,6 @@
 'use strict';
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
+(async()=>{
 
 function runDataFile(path){
   const c={window:{}};
@@ -23,6 +24,7 @@ const context={window:{},document:{addEventListener(){}},console,Float64Array,Ma
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('docs/sp500-data.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/market-data.js','utf8'),context);
+vm.runInContext(fs.readFileSync('docs/history-import.js','utf8'),context);
 vm.runInContext(fs.readFileSync('docs/app.js','utf8'),context);
 
 // S&P 500 now uses the bundled monthly history and preserves the 1946 cut-off.
@@ -33,6 +35,7 @@ assert.strictEqual(vm.runInContext('HISTORY_META.end',context),'2026-08');
 assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),968);
 const spBase=vm.runInContext("getBaseRate({baseMarket:'sp500'})",context);
 assert(Number.isFinite(spBase)&&spBase>-1,'S&P 500 Base CAGR from local monthly history');
+assert(Math.abs(spBase-0.11373172536844711)<1e-14,'S&P 500 numeric regression');
 
 for(const id of ['acwi','nasdaq100']){
   const rate=vm.runInContext(`getBaseRate({baseMarket:'${id}'})`,context);
@@ -91,4 +94,41 @@ assert(!html.includes('cdn.jsdelivr.net/gh/GaMa96/lfc-sp500-data'));
 const appSource=fs.readFileSync('docs/app.js','utf8');
 assert(!appSource.includes('window.__lfcSpData'));
 
+// CSV validation and daily-to-month-end conversion.
+const parse=csv=>JSON.parse(vm.runInContext(`JSON.stringify(parseMarketHistoryCsv(${JSON.stringify(csv)}))`,context));
+assert.deepStrictEqual(parse('date,value\n2020-01,100\n2020-02,105'),{start:'2020-01',end:'2020-02',nomTRP:[100,105]});
+assert.deepStrictEqual(parse('date,value\n2020-01-02,99\n2020-01-31,100\n2020-02-03,101\n2020-02-28,102'),{start:'2020-01',end:'2020-02',nomTRP:[100,102]});
+for(const [csv,message] of [
+  ['date,value\n2020-01,100\n2020-01,101','重複'],
+  ['date,value\n2020-01,100\n2020-03,101','抜け'],
+  ['date,value\n2020-01,abc\n2020-02,101','有限値'],
+  ['date,value\n2020-01,0\n2020-02,101','0より大きく'],
+  ['date,value\n2020-01,-1\n2020-02,101','0より大きく'],
+  ['date,value\n2020-02,101\n2020-01,100','昇順']
+])assert.throws(()=>parse(csv),new RegExp(message));
+
+// Imported histories override only their own runtime market objects and drive Base.
+const imported={levels:{start:'2020-01',end:'2020-05',nomTRP:[100,101,103,102,106]},metadata:{indexName:'MSCI ACWI',returnType:'Total Return',currency:'USD'}};
+context.imported=imported;
+vm.runInContext("USER_MARKET_HISTORIES.acwi=imported; selectMarketHistory('acwi')",context);
+assert.strictEqual(vm.runInContext("getEffectiveMarket('acwi').userHistory",context),true);
+assert.strictEqual(vm.runInContext("getEffectiveMarket('nasdaq100').monthlyLevels",context),null);
+assert.strictEqual(vm.runInContext("window.__marketData.acwi.monthlyLevels",context),null,'static market data stays immutable');
+assert(Math.abs(vm.runInContext("getBaseRate({baseMarket:'acwi'})",context)-fullCagr)<1e-12,'imported Base CAGR');
+const tooShort=vm.runInContext(`calculateRecentScenario(${JSON.stringify(Object.assign({},v,{lifeAge:62}))},${fullCagr})`,context);
+assert.strictEqual(tooShort.historyStatus,'history_too_short');
+assert.strictEqual(tooShort.requiredMonths,12);
+assert.strictEqual(tooShort.availableMonths,4);
+
+// IndexedDB-facing restoration and deletion are independently keyed.
+context.saved={acwi:imported,nasdaq100:{levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{indexName:'NASDAQ-100'}}};
+vm.runInContext("loadMarketHistory=async key=>saved[key]; deleteMarketHistory=async key=>{delete saved[key]}",context);
+vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete USER_MARKET_HISTORIES.nasdaq100",context);
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5,'ACWI restoration');
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.nasdaq100.levels.nomTRP.length',context),2,'NASDAQ restoration');
+await vm.runInContext("deleteMarketHistory('acwi')",context);
+assert.strictEqual(context.saved.acwi,undefined,'delete imported history');
+
 console.log('market-data tests passed');
+})().catch(e=>{console.error(e);process.exitCode=1});

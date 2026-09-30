@@ -4,24 +4,25 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm');
 
 function createIndexedDbStub(){
   const databases=new Map();
-  return{fail:false,opens:0,open(name){
-    const request={};this.opens++;
+  return{fail:false,blocked:false,nextTransaction:'complete',opens:0,open(name){
+    const request={},controller=this;this.opens++;
     queueMicrotask(()=>{
+      if(controller.blocked){if(request.onblocked)request.onblocked();return}
       if(this.fail){request.error=new Error('storage failure');if(request.onerror)request.onerror();return}
       const fresh=!databases.has(name);if(fresh)databases.set(name,new Map());const data=databases.get(name);
       request.result={
         createObjectStore(){},close(){},
-        transaction(){return{objectStore(){return{
-          get(key){return operation(()=>data.get(key))},
-          put(value,key){return operation(()=>data.set(key,value))},
-          delete(key){return operation(()=>data.delete(key))}
-        }}}}
+        transaction(){const mode=controller.nextTransaction;controller.nextTransaction='complete';const tx={objectStore(){return{
+          get(key){return operation(tx,mode,()=>data.get(key))},
+          put(value,key){return operation(tx,mode,()=>{data.set(key,value)})},
+          delete(key){return operation(tx,mode,()=>{data.delete(key)})}
+        }}};return tx}
       };
       if(fresh&&request.onupgradeneeded)request.onupgradeneeded();if(request.onsuccess)request.onsuccess()
     });
     return request
   }};
-  function operation(fn){const request={};queueMicrotask(()=>{try{request.result=fn();if(request.onsuccess)request.onsuccess()}catch(e){request.error=e;if(request.onerror)request.onerror()}});return request}
+  function operation(tx,mode,fn){const request={};queueMicrotask(()=>{try{if(mode==='complete')request.result=fn();else if(mode==='abort' || mode==='error')request.result=undefined;if(request.onsuccess)request.onsuccess();queueMicrotask(()=>{if(mode==='abort'&&tx.onabort)tx.onabort();else if(mode==='error'&&tx.onerror)tx.onerror();else if(mode==='complete'&&tx.oncomplete)tx.oncomplete()})}catch(e){request.error=e;if(request.onerror)request.onerror();if(tx.onerror)tx.onerror()}});return request}
 }
 
 function runDataFile(path){
@@ -162,6 +163,18 @@ assert.strictEqual(vm.runInContext("isValidUserHistory(badType,'acwi')",context)
 assert.strictEqual(vm.runInContext("isValidUserHistory(badCurrency,'acwi')",context),false);
 assert.strictEqual(vm.runInContext("isValidUserHistory(badName,'acwi')",context),false);
 
+// Reopening the dialog always drops the prior file and refreshes index metadata.
+const dialogElements={historyFile:{value:'acwi.csv'},importError:{textContent:'old error'},importIndexName:{value:''},importReturnType:{value:''},importCurrency:{value:''},returnTypeWarning:{textContent:''}};
+context.document={getElementById:id=>dialogElements[id]};
+vm.runInContext("resetHistoryImportDialog('acwi')",context);
+assert.strictEqual(dialogElements.historyFile.value,'');
+dialogElements.historyFile.value='acwi.csv';
+vm.runInContext("resetHistoryImportDialog('nasdaq100')",context);
+assert.strictEqual(dialogElements.historyFile.value,'','cross-index file is cleared');
+assert.strictEqual(dialogElements.importIndexName.value,'NASDAQ-100');
+assert.strictEqual(dialogElements.importReturnType.value,'Total Return');
+assert.strictEqual(dialogElements.importCurrency.value,'USD');
+
 // Exercise the production IndexedDB adapter: put/get/delete and independent keys.
 const nasdaqImported={levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{indexName:'NASDAQ-100',returnType:'Gross Return',currency:'USD'}};
 context.nasdaqImported=nasdaqImported;
@@ -170,6 +183,13 @@ await vm.runInContext("saveMarketHistory('nasdaq100',nasdaqImported)",context);
 assert.strictEqual((await vm.runInContext("loadMarketHistory('acwi')",context)).levels.nomTRP.length,5);
 assert.strictEqual((await vm.runInContext("loadMarketHistory('nasdaq100')",context)).levels.nomTRP.length,2);
 assert(indexedDB.opens>=4,'database is reopened for adapter operations');
+indexedDB.nextTransaction='abort';
+await assert.rejects(vm.runInContext("saveMarketHistory('acwi',imported)",context),/中止/,'request success followed by transaction abort rejects');
+indexedDB.nextTransaction='error';
+await assert.rejects(vm.runInContext("loadMarketHistory('acwi')",context),/transactionに失敗/,'transaction error rejects');
+indexedDB.blocked=true;
+await assert.rejects(vm.runInContext('openMarketHistoryDb()',context),/他タブによりブロック/);
+indexedDB.blocked=false;
 vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete USER_MARKET_HISTORIES.nasdaq100",context);
 await vm.runInContext('restoreUserHistories()',context);
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5,'ACWI restoration');
@@ -182,13 +202,22 @@ await vm.runInContext("saveMarketHistory('acwi',corruptEnd); delete USER_MARKET_
 await vm.runInContext('restoreUserHistories()',context);
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi',context),undefined);
 
-// A storage failure keeps a valid import available for the current tab.
-indexedDB.fail=true;
-const fallback=await vm.runInContext("importMarketHistoryRecord('acwi',imported)",context);
-assert.strictEqual(fallback.persisted,false);
-assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5);
-assert.strictEqual(vm.runInContext('SESSION_ONLY_MARKETS.acwi',context),true);
-indexedDB.fail=false;
+// Open, transaction abort, and transaction error failures all retain a session copy.
+for(const failure of ['open','abort','error']){
+  if(failure==='open')indexedDB.fail=true;else indexedDB.nextTransaction=failure;
+  const fallback=await vm.runInContext("importMarketHistoryRecord('acwi',imported)",context);
+  assert.strictEqual(fallback.persisted,false);
+  assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5);
+  assert.strictEqual(vm.runInContext('SESSION_ONLY_MARKETS.acwi',context),true);
+  indexedDB.fail=false;
+}
+
+// A failed persistent delete still clears this tab and is surfaced by the UI handler.
+indexedDB.nextTransaction='abort';
+const removed=await vm.runInContext("removeImportedHistory('acwi')",context);
+assert.strictEqual(removed.persistentDeleted,false);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi',context),undefined);
+assert(appSource.includes('再読込後に復元される可能性があります。'));
 
 // Price Return and session-only warnings are derived from restored metadata.
 context.priceImported={...imported,metadata:{...imported.metadata,returnType:'Price Return'}};

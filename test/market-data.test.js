@@ -4,7 +4,7 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm');
 
 function createIndexedDbStub(){
   const databases=new Map();
-  return{fail:false,blocked:false,nextTransaction:'complete',opens:0,open(name){
+  return{fail:false,blocked:false,nextTransaction:'complete',abortNextPut:false,opens:0,open(name){
     const request={},controller=this;this.opens++;
     queueMicrotask(()=>{
       if(controller.blocked){if(request.onblocked)request.onblocked();return}
@@ -14,7 +14,7 @@ function createIndexedDbStub(){
         createObjectStore(){},close(){},
         transaction(){const mode=controller.nextTransaction;controller.nextTransaction='complete';const tx={objectStore(){return{
           get(key){return operation(tx,mode,()=>data.get(key))},
-          put(value,key){return operation(tx,mode,()=>{data.set(key,value)})},
+          put(value,key){if(controller.abortNextPut){tx.forcedMode='abort';controller.abortNextPut=false}return operation(tx,mode,()=>{data.set(key,value)})},
           delete(key){return operation(tx,mode,()=>{data.delete(key)})}
         }}};return tx}
       };
@@ -22,7 +22,7 @@ function createIndexedDbStub(){
     });
     return request
   }};
-  function operation(tx,mode,fn){const request={};queueMicrotask(()=>{try{if(mode==='complete')request.result=fn();else if(mode==='abort' || mode==='error')request.result=undefined;if(request.onsuccess)request.onsuccess();queueMicrotask(()=>{if(mode==='abort'&&tx.onabort)tx.onabort();else if(mode==='error'&&tx.onerror)tx.onerror();else if(mode==='complete'&&tx.oncomplete)tx.oncomplete()})}catch(e){request.error=e;if(request.onerror)request.onerror();if(tx.onerror)tx.onerror()}});return request}
+  function operation(tx,mode,fn){const request={};queueMicrotask(()=>{try{mode=tx.forcedMode||mode;if(mode==='complete')request.result=fn();else if(mode==='abort' || mode==='error')request.result=undefined;if(request.onsuccess)request.onsuccess();queueMicrotask(()=>{if(mode==='abort'&&tx.onabort)tx.onabort();else if(mode==='error'&&tx.onerror)tx.onerror();else if(mode==='complete'&&tx.oncomplete)tx.oncomplete()})}catch(e){request.error=e;if(request.onerror)request.onerror();if(tx.onerror)tx.onerror()}});return request}
 }
 
 function runDataFile(path){
@@ -140,8 +140,9 @@ for(const [csv,message] of [
 ])assert.throws(()=>parse(csv),new RegExp(message));
 
 // Imported histories override only their own runtime market objects and drive Base.
-const imported={levels:{start:'2020-01',end:'2020-05',nomTRP:[100,101,103,102,106]},metadata:{indexName:'MSCI ACWI',returnType:'Total Return',currency:'USD'}};
+const imported={levels:{start:'2020-01',end:'2020-05',nomTRP:[100,101,103,102,106]},metadata:{marketKey:'acwi',indexName:'MSCI ACWI',returnType:'Total Return',currency:'USD'}};
 context.imported=imported;
+assert.strictEqual(vm.runInContext("createImportedMarketHistoryRecord('acwi',imported.levels,'Total Return',' USD ').metadata.marketKey",context),'acwi','CSV import records market identity');
 vm.runInContext("USER_MARKET_HISTORIES.acwi=imported; selectMarketHistory('acwi')",context);
 assert.strictEqual(vm.runInContext("getEffectiveMarket('acwi').userHistory",context),true);
 assert.strictEqual(vm.runInContext("getEffectiveMarket('nasdaq100').monthlyLevels",context),null);
@@ -157,11 +158,14 @@ assert.strictEqual(vm.runInContext('HIST_RETURNS.length',context),4,'5 levels pr
 context.corruptEnd={...imported,levels:{...imported.levels,end:'2020-06'}};
 context.badType={...imported,metadata:{...imported.metadata,returnType:'Unknown Return'}};
 context.badCurrency={...imported,metadata:{...imported.metadata,currency:''}};
-context.badName={...imported,metadata:{...imported.metadata,indexName:'attacker supplied'}};
+context.renamed={...imported,metadata:{...imported.metadata,indexName:'Future ACWI Display Label'}};
+context.crossIndex={...imported,metadata:{...imported.metadata,marketKey:'nasdaq100'}};
 assert.strictEqual(vm.runInContext("isValidUserHistory(corruptEnd,'acwi')",context),false);
 assert.strictEqual(vm.runInContext("isValidUserHistory(badType,'acwi')",context),false);
 assert.strictEqual(vm.runInContext("isValidUserHistory(badCurrency,'acwi')",context),false);
-assert.strictEqual(vm.runInContext("isValidUserHistory(badName,'acwi')",context),false);
+assert.strictEqual(vm.runInContext("isValidUserHistory(imported,'acwi')",context),true);
+assert.strictEqual(vm.runInContext("isValidUserHistory(renamed,'acwi')",context),true,'indexName is display-only');
+assert.strictEqual(vm.runInContext("isValidUserHistory(crossIndex,'acwi')",context),false);
 
 // Reopening the dialog always drops the prior file and refreshes index metadata.
 const dialogElements={historyFile:{value:'acwi.csv'},importError:{textContent:'old error'},importIndexName:{value:''},importReturnType:{value:''},importCurrency:{value:''},returnTypeWarning:{textContent:''}};
@@ -176,8 +180,9 @@ assert.strictEqual(dialogElements.importReturnType.value,'Total Return');
 assert.strictEqual(dialogElements.importCurrency.value,'USD');
 
 // Exercise the production IndexedDB adapter: put/get/delete and independent keys.
-const nasdaqImported={levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{indexName:'NASDAQ-100',returnType:'Gross Return',currency:'USD'}};
+const nasdaqImported={levels:{start:'2021-01',end:'2021-02',nomTRP:[200,210]},metadata:{marketKey:'nasdaq100',indexName:'NASDAQ-100',returnType:'Gross Return',currency:'USD'}};
 context.nasdaqImported=nasdaqImported;
+assert.strictEqual(vm.runInContext("isValidUserHistory(nasdaqImported,'nasdaq100')",context),true);
 await vm.runInContext("saveMarketHistory('acwi',imported)",context);
 await vm.runInContext("saveMarketHistory('nasdaq100',nasdaqImported)",context);
 assert.strictEqual((await vm.runInContext("loadMarketHistory('acwi')",context)).levels.nomTRP.length,5);
@@ -194,6 +199,32 @@ vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete USER_MARKET_HISTORIES
 await vm.runInContext('restoreUserHistories()',context);
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.levels.nomTRP.length',context),5,'ACWI restoration');
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.nasdaq100.levels.nomTRP.length',context),2,'NASDAQ restoration');
+
+// Persisted records can never cross market storage identities.
+await vm.runInContext("saveMarketHistory('acwi',nasdaqImported); delete USER_MARKET_HISTORIES.acwi",context);
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi',context),undefined,'cross-index restore is rejected');
+assert.strictEqual(vm.runInContext("getEffectiveMarket('acwi').userHistory",context),undefined,'effective market ignores cross-index history');
+
+// Only unkeyed records with a known label are migrated and rewritten.
+context.legacyAcwi={...imported,metadata:{indexName:'MSCI ACWI',returnType:'Total Return',currency:'USD'}};
+await vm.runInContext("saveMarketHistory('acwi',legacyAcwi); delete USER_MARKET_HISTORIES.acwi",context);
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.metadata.marketKey',context),'acwi','safe legacy migration');
+assert.strictEqual((await vm.runInContext("loadMarketHistory('acwi')",context)).metadata.marketKey,'acwi','migration is persisted');
+
+// A valid migrated record remains usable in this tab if its rewrite aborts.
+await vm.runInContext("saveMarketHistory('acwi',legacyAcwi)",context);
+vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete SESSION_ONLY_MARKETS.acwi",context);
+indexedDB.abortNextPut=true;
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.metadata.marketKey',context),'acwi','migrated history survives rewrite failure');
+assert.strictEqual(vm.runInContext('SESSION_ONLY_MARKETS.acwi',context),true,'failed migration rewrite is session-only');
+assert.strictEqual(vm.runInContext("getEffectiveMarket('acwi').userHistory",context),true,'session-only migrated history remains effective');
+context.ambiguousLegacy={...imported,metadata:{indexName:'Unknown Index',returnType:'Total Return',currency:'USD'}};
+await vm.runInContext("saveMarketHistory('acwi',ambiguousLegacy); delete USER_MARKET_HISTORIES.acwi",context);
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi',context),undefined,'ambiguous legacy record is rejected');
 await vm.runInContext("deleteMarketHistory('acwi')",context);
 assert.strictEqual(await vm.runInContext("loadMarketHistory('acwi')",context),undefined,'delete imported history');
 

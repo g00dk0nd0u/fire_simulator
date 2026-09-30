@@ -4,7 +4,7 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm');
 
 function createIndexedDbStub(){
   const databases=new Map();
-  return{fail:false,blocked:false,nextTransaction:'complete',opens:0,open(name){
+  return{fail:false,blocked:false,nextTransaction:'complete',abortNextPut:false,opens:0,open(name){
     const request={},controller=this;this.opens++;
     queueMicrotask(()=>{
       if(controller.blocked){if(request.onblocked)request.onblocked();return}
@@ -14,7 +14,7 @@ function createIndexedDbStub(){
         createObjectStore(){},close(){},
         transaction(){const mode=controller.nextTransaction;controller.nextTransaction='complete';const tx={objectStore(){return{
           get(key){return operation(tx,mode,()=>data.get(key))},
-          put(value,key){return operation(tx,mode,()=>{data.set(key,value)})},
+          put(value,key){if(controller.abortNextPut){tx.forcedMode='abort';controller.abortNextPut=false}return operation(tx,mode,()=>{data.set(key,value)})},
           delete(key){return operation(tx,mode,()=>{data.delete(key)})}
         }}};return tx}
       };
@@ -22,7 +22,7 @@ function createIndexedDbStub(){
     });
     return request
   }};
-  function operation(tx,mode,fn){const request={};queueMicrotask(()=>{try{if(mode==='complete')request.result=fn();else if(mode==='abort' || mode==='error')request.result=undefined;if(request.onsuccess)request.onsuccess();queueMicrotask(()=>{if(mode==='abort'&&tx.onabort)tx.onabort();else if(mode==='error'&&tx.onerror)tx.onerror();else if(mode==='complete'&&tx.oncomplete)tx.oncomplete()})}catch(e){request.error=e;if(request.onerror)request.onerror();if(tx.onerror)tx.onerror()}});return request}
+  function operation(tx,mode,fn){const request={};queueMicrotask(()=>{try{mode=tx.forcedMode||mode;if(mode==='complete')request.result=fn();else if(mode==='abort' || mode==='error')request.result=undefined;if(request.onsuccess)request.onsuccess();queueMicrotask(()=>{if(mode==='abort'&&tx.onabort)tx.onabort();else if(mode==='error'&&tx.onerror)tx.onerror();else if(mode==='complete'&&tx.oncomplete)tx.oncomplete()})}catch(e){request.error=e;if(request.onerror)request.onerror();if(tx.onerror)tx.onerror()}});return request}
 }
 
 function runDataFile(path){
@@ -212,6 +212,15 @@ await vm.runInContext("saveMarketHistory('acwi',legacyAcwi); delete USER_MARKET_
 await vm.runInContext('restoreUserHistories()',context);
 assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.metadata.marketKey',context),'acwi','safe legacy migration');
 assert.strictEqual((await vm.runInContext("loadMarketHistory('acwi')",context)).metadata.marketKey,'acwi','migration is persisted');
+
+// A valid migrated record remains usable in this tab if its rewrite aborts.
+await vm.runInContext("saveMarketHistory('acwi',legacyAcwi)",context);
+vm.runInContext("delete USER_MARKET_HISTORIES.acwi; delete SESSION_ONLY_MARKETS.acwi",context);
+indexedDB.abortNextPut=true;
+await vm.runInContext('restoreUserHistories()',context);
+assert.strictEqual(vm.runInContext('USER_MARKET_HISTORIES.acwi.metadata.marketKey',context),'acwi','migrated history survives rewrite failure');
+assert.strictEqual(vm.runInContext('SESSION_ONLY_MARKETS.acwi',context),true,'failed migration rewrite is session-only');
+assert.strictEqual(vm.runInContext("getEffectiveMarket('acwi').userHistory",context),true,'session-only migrated history remains effective');
 context.ambiguousLegacy={...imported,metadata:{indexName:'Unknown Index',returnType:'Total Return',currency:'USD'}};
 await vm.runInContext("saveMarketHistory('acwi',ambiguousLegacy); delete USER_MARKET_HISTORIES.acwi",context);
 await vm.runInContext('restoreUserHistories()',context);
